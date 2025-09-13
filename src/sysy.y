@@ -53,7 +53,7 @@ FuncType
 
 Block
     :'{' Stmt '}'{
-        auto stmt = unique_ptr<string>($2)
+        auto stmt = unique_ptr<string>($2);
         $$ = new string("{ " + *stmt + " }");
     }
     ;
