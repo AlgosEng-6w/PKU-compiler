@@ -1,16 +1,11 @@
+make -n
+grep -r "TARGET\|EXEC\|koopa" /root/
 make
-file /root/src/sysy.l
-head -c 3 /root/src/sysy.l | hexdump -C
-cat -A /root/src/sysy.l | head -5
-cat -A /root/src/sysy.l | head -5
-sed -i '1s/^\xEF\xBB\xBF//' /root/src/sysy.l
-dos2unix /root/src/sysy.l
-sed -i -e '1s/^\xEF\xBB\xBF//' -e 's/\r$//' /root/src/sysy.l
-file /root/src/sysy.l
 make clean
 make
-head -c 50 /root/src/sysy.l | od -c
-cat /root/src/sysy.l | head -3 | od -c
-exit
+build/compiler -koopa hello.c -o hello.koopa
+rm .bash_history
 make clean
+make
+build/compiler -koopa hello.c -o hello.koopa
 exit

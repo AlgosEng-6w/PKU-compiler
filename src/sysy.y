@@ -2,6 +2,8 @@
 %code requires{
     #include <memory>
     #include <string>
+    #include <cstdio>
+    #include "ast.hpp"
 }
 
 %{
@@ -10,16 +12,17 @@
 #include <string>
 
 int yylex();
-void yyerror(std::unique_ptr<std::string> &ast, const char* s);
+void yyerror(std::unique_ptr<BaseAST> &ast, const char* s);
 using namespace std;
 %}
 
 // Bison指令：定义语法分析器的配置和行为
-%parse-param {std::unique_ptr<std::string> &ast}
+%parse-param {std::unique_ptr<BaseAST> &ast}
 
 %union {
     std::string *str_val;
     int int_val;
+    BaseAST *ast_val;
 }
 
 // Token和类型声明：定义词法语法分析器的通信协议
@@ -27,52 +30,63 @@ using namespace std;
 %token <str_val> IDENT
 %token <int_val> INT_CONST
 
-%type <str_val> FuncDef FuncType Block Stmt Number
+%type <ast_val> FuncDef FuncType Block Stmt
+%type <int_val> Number
 
 // 语法规则
 %%
 CompUnit
     :FuncDef{
-        ast = unique_ptr<string>($1);
+        auto comp_unit = make_unique<CompUnitAST>();
+        comp_unit->func_def = unique_ptr<BaseAST>($1);
+        ast = move(comp_unit);
     }
     ;
 
 FuncDef
     :FuncType IDENT '(' ')' Block {
-        auto type = unique_ptr<string>($1);
-        auto ident = unique_ptr<string>($2);
-        auto block = unique_ptr<string>($5);
-        $$ = new string(*type + " " +*ident +"() " + *block);
+        auto func_def = make_unique<FuncDefAST>();
+        func_def->func_type = unique_ptr<BaseAST>($1);
+        func_def->ident = *unique_ptr<string>($2);
+        func_def->block = unique_ptr<BaseAST>($5);
+        $$ = move(func_def);
     }
     ;
 
 FuncType
     :INT {
-    $$ = new string("int");
+        auto func_type = make_unique<FuncTypeAST>();
+        $$ = move(func_type);
     }
+    ;
 
 Block
     :'{' Stmt '}'{
-        auto stmt = unique_ptr<string>($2);
-        $$ = new string("{ " + *stmt + " }");
+        auto block = make_unique<BlockAST>();
+        block->stmt = unique_ptr<BaseAST>($2);
+        $$ = move(block);
     }
     ;
 
 Stmt
     :RETURN Number ';'{
-        auto number = unique_ptr<string>($2);
-        $$ = new string("return " + *number + ";");
+        auto stmt = make_unique<StmtAST>();
+        stmt->number = $2;
+        $$ = move(stmt);
     }
     ;
 
 Number
     :INT_CONST{
-        $$ = new string(to_string($1));
+        $$ = $1;
     }
     ;
 
 // 额外插入辅助函数
 %%
-void yyerror(unique_ptr<string> &ast, const char* s){
-    cerr << "error: " << s << endl;
+void yyerror(unique_ptr<BaseAST>&ast, const char* s){
+    extern int yylineno;
+    extern char* yytext;
+    fprintf(stderr, "ERROR: %s at '%s' on line %d\n", s, yytext, yylineno);
+    ast.reset();
 }
