@@ -1,6 +1,8 @@
 #include <cassert>
 #include <cstdio>
 #include <iostream>
+#include <sstream>
+#include <fstream>
 #include <memory>
 #include <string>
 #include "ast.hpp"
@@ -23,8 +25,26 @@ int main(int argc, const char *argv[]) {
   auto ret = yyparse(ast);
   assert(!ret);
 
+  cout << "=== AST Structure ===" << endl;
   ast->Dump();
   cout << endl;
 
+  ofstream outputfile(output);
+  assert(outputfile);
+
+  stringstream ss;
+  streambuf *oldcoutbuf = cout.rdbuf(ss.rdbuf());
+  ast->KoopaIR();
+  cout.rdbuf(outputfile.rdbuf());
+
+  if (string(mode)=="-koopa"){
+    cout << ss.str();
+  }
+  else if (string(mode)=="-riscv")
+  {
+
+  }
+  cout.rdbuf(oldcoutbuf);
+  outputfile.close();
   return 0;
 }
