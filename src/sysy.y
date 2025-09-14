@@ -10,6 +10,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include "ast.hpp"
 
 int yylex();
 void yyerror(std::unique_ptr<BaseAST> &ast, const char* s);
@@ -39,7 +40,7 @@ CompUnit
     :FuncDef{
         auto comp_unit = make_unique<CompUnitAST>();
         comp_unit->func_def = unique_ptr<BaseAST>($1);
-        ast = move(comp_unit);
+        ast = std::move(comp_unit);
     }
     ;
 
@@ -49,14 +50,14 @@ FuncDef
         func_def->func_type = unique_ptr<BaseAST>($1);
         func_def->ident = *unique_ptr<string>($2);
         func_def->block = unique_ptr<BaseAST>($5);
-        $$ = move(func_def);
+        $$ = func_def.release();
     }
     ;
 
 FuncType
     :INT {
         auto func_type = make_unique<FuncTypeAST>();
-        $$ = move(func_type);
+        $$ = func_type.release();
     }
     ;
 
@@ -64,7 +65,7 @@ Block
     :'{' Stmt '}'{
         auto block = make_unique<BlockAST>();
         block->stmt = unique_ptr<BaseAST>($2);
-        $$ = move(block);
+        $$ = block.release();
     }
     ;
 
@@ -72,7 +73,7 @@ Stmt
     :RETURN Number ';'{
         auto stmt = make_unique<StmtAST>();
         stmt->number = $2;
-        $$ = move(stmt);
+        $$ = stmt.release();
     }
     ;
 
