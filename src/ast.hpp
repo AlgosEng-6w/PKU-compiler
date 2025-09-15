@@ -6,6 +6,7 @@ class BaseAST {
     public:
         virtual ~BaseAST() = default;
         virtual void Dump() const = 0;
+        virtual void KoopaIR() const = 0;
 };
 
 class CompUnitAST : public BaseAST{
@@ -16,6 +17,10 @@ class CompUnitAST : public BaseAST{
             std::cout << "CompUnitAST { ";
             func_def->Dump();
             std::cout << " }";
+        }
+
+        void KoopaIR() const override {
+            func_def->KoopaIR();
         }
 };
 
@@ -32,6 +37,14 @@ class FuncDefAST : public BaseAST{
             block->Dump();
             std::cout << " }";
         }
+
+        void KoopaIR() const override {
+            std::cout << "fun @" << ident << "(): ";
+            func_type->KoopaIR();
+            std::cout << "{ " << std::endl;
+            block->KoopaIR();
+            std::cout << std::endl << " }" << std::endl;   
+        }
 };
 
 class FuncTypeAST : public BaseAST{
@@ -40,6 +53,9 @@ class FuncTypeAST : public BaseAST{
             std::cout << "FuncTypeAST { int }";
         }
         
+        void KoopaIR() const override{
+            std::cout << "i32" << std::endl;
+        };
 };
 
 class BlockAST : public BaseAST{
@@ -51,6 +67,12 @@ class BlockAST : public BaseAST{
             stmt->Dump();
             std::cout << " }";
         }
+
+        void KoopaIR() const override{
+            std::cout << "%entry:" << std::endl;
+            std::cout << "  ";
+            stmt->KoopaIR();
+        }
 };
 
 class StmtAST : public BaseAST{
@@ -59,5 +81,9 @@ class StmtAST : public BaseAST{
 
         void Dump() const override{
             std::cout << "StmtAST { " << number << " }";
+        }
+
+        void KoopaIR() const override{
+            std::cout << "ret " << number;
         }
 };
