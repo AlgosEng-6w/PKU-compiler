@@ -11,3 +11,4 @@
 docker run -it --rm -v D:\vscode_code\PKU-compiler:/root maxxing/compiler-dev bash
 make
 build/compiler -koopa hello.c -o hello.koopa
+build/compiler -riscv hello.c -o hello.riscv

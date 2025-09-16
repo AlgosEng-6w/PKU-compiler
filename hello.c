@@ -1,4 +1,3 @@
-int main(){
-    // 小测一波
-    return 0;
+int main() {
+  return +(- -!6);  // 看起来像个颜文字
 }

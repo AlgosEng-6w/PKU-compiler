@@ -31,8 +31,7 @@ using namespace std;
 %token <str_val> IDENT
 %token <int_val> INT_CONST
 
-%type <ast_val> FuncDef FuncType Block Stmt
-%type <int_val> Number
+%type <ast_val> FuncDef FuncType Block Stmt Exp UnaryExp PrimaryExp UnaryOp Number
 
 // 语法规则
 %%
@@ -69,17 +68,78 @@ Block
     }
     ;
 
+// Stmt ::= "return" Exp ";";
 Stmt
-    :RETURN Number ';'{
+    :RETURN Exp ';'{
         auto stmt = make_unique<StmtAST>();
-        stmt->number = $2;
+        stmt->exp = unique_ptr<BaseAST>($2);
         $$ = stmt.release();
+    }
+    ;
+
+// Exp:: = UnaryExp;
+Exp
+    : UnaryExp {
+        auto exp = make_unique<ExpAST>();
+        exp->unaryexp = unique_ptr<BaseAST>($1);
+        $$ = exp.release();
+    }
+    ;
+
+// PrimaryExp ::= "(" Exp ")" | Number;
+PrimaryExp
+    : '(' Exp ')' {
+        auto primaryexp = make_unique<PrimaryExpAST>();
+        primaryexp->type = 1;
+        primaryexp->exp = unique_ptr<BaseAST>($2);
+        $$ = primaryexp.release();
+    }
+    | Number{
+        auto primaryexp = make_unique<PrimaryExpAST>();
+        primaryexp->type = 2;
+        primaryexp->exp = unique_ptr<BaseAST>($1);
+        $$ = primaryexp.release();
+    }
+
+UnaryExp
+    : PrimaryExp {
+        auto unaryexp = make_unique<UnaryExpAST>();
+        unaryexp->type = 1;
+        unaryexp->primaryexp = unique_ptr<BaseAST>($1);
+        $$ = unaryexp.release();
+    }
+    | UnaryOp UnaryExp {
+        auto unaryexp = make_unique<UnaryExpAST>();
+        unaryexp->type = 2;
+        unaryexp->unaryop = unique_ptr<BaseAST>($1);
+        unaryexp->unaryexp = unique_ptr<BaseAST>($2);
+        $$ = unaryexp.release();
+    }
+    ;
+
+
+// UnaryOp ::= "+" | "-" | "!";
+UnaryOp
+    : '+' {
+        auto unaryop = make_unique<UnaryOpAST>();
+        unaryop->op = '+';
+        $$ = unaryexp.release();
+    }
+    | '-' {
+        auto unaryop = make_unique<UnaryOpAST>();
+        unaryop->op = '-';
+        $$ = unaryexp.release();
+    }
+    | '!' {
+        auto unaryop = make_unique<UnaryOpAST>();
+        unaryop->op = '!';
+        $$ = unaryexp.release();
     }
     ;
 
 Number
     :INT_CONST{
-        $$ = $1;
+        auto number = make_unique<NumberAST>();
     }
     ;
 
