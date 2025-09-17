@@ -23,6 +23,7 @@ using namespace std;
 %union {
     std::string *str_val;
     int int_val;
+    char char_val;
     BaseAST *ast_val;
 }
 
@@ -31,7 +32,8 @@ using namespace std;
 %token <str_val> IDENT
 %token <int_val> INT_CONST
 
-%type <ast_val> FuncDef FuncType Block Stmt Exp UnaryExp PrimaryExp UnaryOp Number
+%type <char_val> UnaryOp
+%type <ast_val> FuncDef FuncType Block Stmt Exp UnaryExp PrimaryExp
 
 // 语法规则
 %%
@@ -94,25 +96,22 @@ PrimaryExp
         primaryexp->exp = unique_ptr<BaseAST>($2);
         $$ = primaryexp.release();
     }
-    | Number{
+    | INT_CONST{
         auto primaryexp = make_unique<PrimaryExpAST>();
         primaryexp->type = 2;
-        primaryexp->exp = unique_ptr<BaseAST>($1);
+        primaryexp->number = $1;
         $$ = primaryexp.release();
     }
 
 UnaryExp
     : PrimaryExp {
-        auto unaryexp = make_unique<UnaryExpAST>();
-        unaryexp->type = 1;
-        unaryexp->primaryexp = unique_ptr<BaseAST>($1);
-        $$ = unaryexp.release();
+        $$ = $1;
     }
     | UnaryOp UnaryExp {
         auto unaryexp = make_unique<UnaryExpAST>();
         unaryexp->type = 2;
-        unaryexp->unaryop = unique_ptr<BaseAST>($1);
-        unaryexp->unaryexp = unique_ptr<BaseAST>($2);
+        unaryexp->primaryexp_unaryexp = unique_ptr<BaseAST>($2);
+        unaryexp->unaryop = $1;
         $$ = unaryexp.release();
     }
     ;
@@ -121,27 +120,16 @@ UnaryExp
 // UnaryOp ::= "+" | "-" | "!";
 UnaryOp
     : '+' {
-        auto unaryop = make_unique<UnaryOpAST>();
-        unaryop->op = '+';
-        $$ = unaryexp.release();
+        $$ = '+';
     }
     | '-' {
-        auto unaryop = make_unique<UnaryOpAST>();
-        unaryop->op = '-';
-        $$ = unaryexp.release();
+        $$ = '-';
     }
     | '!' {
-        auto unaryop = make_unique<UnaryOpAST>();
-        unaryop->op = '!';
-        $$ = unaryexp.release();
+        $$ = '!';
     }
     ;
 
-Number
-    :INT_CONST{
-        auto number = make_unique<NumberAST>();
-    }
-    ;
 
 // 额外插入辅助函数
 %%

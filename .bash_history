@@ -10,3 +10,9 @@ build/compiler -riscv hello.c -o hello.riscv
 make
 build/compiler -riscv hello.c -o hello.riscv
 exit
+make
+make
+make
+make
+-v
+exit

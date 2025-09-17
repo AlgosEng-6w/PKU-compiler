@@ -2,6 +2,9 @@
 #include<memory>
 #include<string>
 #include<iostream>
+
+static int koopacnt;   // 临时变量计数器
+
 class BaseAST {
     public:
         virtual ~BaseAST() = default;
@@ -46,7 +49,7 @@ class FuncDefAST : public BaseAST{
             func_type->KoopaIR();
             std::cout << "{ " << std::endl;
             block->KoopaIR();
-            std::cout << std::endl << " }" << std::endl;   
+            std::cout << " }" << std::endl;   
         }
 };
 
@@ -75,7 +78,6 @@ class BlockAST : public BaseAST{
 
         void KoopaIR() const override{
             std::cout << "%entry:" << std::endl;
-            std::cout << "  ";
             stmt->KoopaIR();
         }
 };
@@ -92,8 +94,8 @@ class StmtAST : public BaseAST{
         }
 
         void KoopaIR() const override{
-            std::cout << "ret ";
             exp->KoopaIR();
+            std::cout << "  ret %" << koopacnt-1 << std::endl;
         }
 };
 
@@ -114,59 +116,80 @@ class ExpAST : public BaseAST{
 };
 
 // PrimaryExp ::= "(" Exp ")" | Number;
+// Number ::= INT_CONST;
 class PrimaryExpAST : public BaseAST{
     public:
         int type;
-        std::unique_ptr<BaseAST> exp_number;
+        std::int32_t number;
+        std::unique_ptr<BaseAST> exp;
 
         void Dump() const override{
             std::cout << "PrimaryExpAST { ";
-            exp_number->Dump();
+            if (type == 1) exp->Dump();
+            else if (type == 2) std::cout << "Number: " << number;
             std::cout << " }";
         }
 
-        void KoopaIR() const override;
+        void KoopaIR() const override{
+            if (type == 1) exp->KoopaIR();
+            else if (type == 2){
+                std::cout << number << std::endl;
+            }
+        }
 };
 
 // UnaryExp ::= PrimaryExp | UnaryOp UnaryExp;
+// UnaryOp ::= "+" | "-" | "!";
 class UnaryExpAST : public BaseAST{
     public:
-        std::unique_ptr<BaseAST> primaryexp_unaryop;
-        std::unique_ptr<BaseAST> unaryexp;
+        std::unique_ptr<BaseAST> primaryexp_unaryexp;
+        char unaryop;
         int type;
         
         void Dump() const override{
             std::cout << "UnaryExpAST { ";
-            primaryexp_unaryop->Dump();
-            if (type == 2) unaryexp->Dump();
-            std:cout << " }";
-        }
-
-        void KoopaIR() const override;
-};
-
-// UnaryOp ::= "+" | "-" | "!";
-class UnaryOpAST : public BaseAST{
-    public:
-        char op;
-        
-        void Dump() const override{
-            std::cout << "UnaryOpAST { " << op << " }";
-        }
-
-        void KoopaIR() const override;
-};
-
-// Number ::= INT_CONST;
-class NumberAST : public BaseAST {
-    public:
-        std::int32_t int_const;
-
-        void Dump() const override{
-            std::cout << "Number { " << int_const << " }";
+            if (type == 1) primaryexp_unaryexp->Dump();
+            else if (type == 2) {
+                std::cout << unaryop << " ";
+                primaryexp_unaryexp->Dump();
+            }
+            
+            std::cout << " }";
         }
 
         void KoopaIR() const override{
-            std::cout << int_const;
+            int constvalue;
+            if (isConstantExpression(constvalue) && unaryop == '!') {
+                std::cout <<  "  %" << koopacnt << " = eq 0, " << constvalue << std::endl;
+                koopacnt++;
+                return ;
+            }
+            primaryexp_unaryexp->KoopaIR();
+            if (type == 2){
+                if (unaryop == '-') {
+                    std::cout <<  "  %" << koopacnt << " = sub 0, %" << koopacnt-1 << std::endl;
+                    koopacnt++;
+                }
+                else if (unaryop == '!') {
+                    
+                    std::cout <<  "  %" << koopacnt << " = eq 0, %" << koopacnt-1 << std::endl;
+                    koopacnt++;
+                }
+                else if (unaryop == '+'){
+                    
+                }
+            }
+        }
+
+    private:
+        bool isConstantExpression(int& outValue) const {
+            PrimaryExpAST* primary = dynamic_cast<PrimaryExpAST*>(primaryexp_unaryexp.get());
+            if (primary && primary->type == 2) {
+                outValue = primary->number;
+                return true;
+            }
+            return false;
         }
 };
+
+
