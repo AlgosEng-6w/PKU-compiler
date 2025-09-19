@@ -16,3 +16,10 @@ make
 make
 -v
 exit
+make
+make
+make
+build/compiler -koopa hello.c -o hello.koopa
+make
+build/compiler -koopa hello.c -o hello.koopa
+exit
