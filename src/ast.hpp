@@ -13,6 +13,41 @@ struct ExprResult {
     ExprResult(bool is_const = false, int val = 0) : is_constant(is_const), value(val) {}
 };
 
+typedef enum {
+    MUL_OP,     //  *
+    DIV_OP,     // /
+    MOD_OP      // %
+} mulop_t;
+
+typedef enum {
+    UNARY_PLUS,     // +
+    UNARY_MINUS,    // -
+    UNARY_NOT       // !
+} unaryop_t;
+
+typedef enum {
+    REL_LT,     // <
+    REL_GT,     // >
+    REL_LE,     // <=
+    REL_GE,     // >=
+} relop_t;
+
+
+typedef enum{
+    REL_EQ,     // ==
+    REL_NE      // !=
+} eqop_t;
+
+typedef enum {
+    LAND_OP,    // &&
+    LOR_OP      // ||
+} logicop_t;
+
+typedef enum {
+    ADD_OP,     // +
+    SUB_OP      // -
+} addop_t;
+
 class BaseAST {
     public:
         virtual ~BaseAST() = default;
@@ -117,19 +152,19 @@ class StmtAST : public BaseAST{
         }
 };
 
-// Exp ::= AddExp;
+// Exp ::= LOrExp;
 class ExpAST : public BaseAST{
     public:
-        std::unique_ptr<BaseAST> addexp;
+        std::unique_ptr<BaseAST> lorexp;
 
         void Dump() const override{
             std::cout << "ExpAST { ";
-            addexp->Dump();
+            lorexp->Dump();
             std::cout << " }";
         }
 
         ExprResult KoopaIR() const override{
-            return addexp->KoopaIR();
+            return lorexp->KoopaIR();
         }
 };
 
@@ -163,12 +198,12 @@ class AddExpAST : public BaseAST{
         int type;
         std::unique_ptr<BaseAST> mulexp;
         std::unique_ptr<BaseAST> addexp;
-        char addop;
+        addop_t addop;
 
         void Dump() const override{
             std::cout << "AddExpAST { ";
             if (type == 1) mulexp->Dump();
-            else if (type == 2 || type == 3){
+            else if (type == 2){
                 addexp->Dump();
                 std::cout << "addop ";
                 mulexp->Dump();
@@ -182,19 +217,12 @@ class AddExpAST : public BaseAST{
             else if (type == 2) {
                 ExprResult left = addexp->KoopaIR();
                 ExprResult right = mulexp->KoopaIR();
-                std::cout << "  %" << koopacnt << " = add ";
-                if (left.is_constant) std::cout << left.value;
-                else std::cout << "%" << left.value;
-                std::cout << ", ";
-                if (right.is_constant) std::cout << right.value;
-                else std::cout << "%" << right.value;
-                std::cout << std::endl;
-                return ExprResult(false, koopacnt++);
-            }
-            else if (type == 3){
-                ExprResult left = addexp->KoopaIR();
-                ExprResult right = mulexp->KoopaIR();
-                std::cout << "  %" << koopacnt << " = add ";
+                std::cout << "  %" << koopacnt << " = ";
+                switch(addop) {
+                    case ADD_OP: std::cout << "add "; break;
+                    case SUB_OP: std::cout << "sub "; break;
+                    
+                }
                 if (left.is_constant) std::cout << left.value;
                 else std::cout << "%" << left.value;
                 std::cout << ", ";
@@ -213,7 +241,7 @@ class MulExpAST : public BaseAST {
         int type;
         std::unique_ptr<BaseAST> unaryexp;
         std::unique_ptr<BaseAST> mulexp;
-        char mulop;
+        mulop_t mulop;
 
         void Dump() const override{
             std::cout << "MulExp { ";
@@ -231,11 +259,13 @@ class MulExpAST : public BaseAST {
             
             ExprResult left = mulexp->KoopaIR();
             ExprResult right = unaryexp->KoopaIR();
-
             std::cout << "  %" << koopacnt << " = ";
-            if (type == 2) std::cout << "mul  ";
-            else if (type == 3) std::cout << "div ";
-            else if (type == 4) std::cout << "mod ";
+
+            switch(mulop){
+                case MUL_OP: std::cout << "mul "; break;
+                case DIV_OP: std::cout << "div "; break;
+                case MOD_OP: std::cout << "mod "; break;
+            }
 
             if (left.is_constant) std::cout << left.value;
             else std::cout << "%" << left.value;
@@ -246,17 +276,14 @@ class MulExpAST : public BaseAST {
             std::cout << std::endl;
 
             return ExprResult(false, koopacnt++);
-            
-            return ExprResult();
         }
 };
 
 // UnaryExp ::= PrimaryExp | UnaryOp UnaryExp;
-// UnaryOp ::= "+" | "-" | "!";
 class UnaryExpAST : public BaseAST{
     public:
         std::unique_ptr<BaseAST> primaryexp_unaryexp;
-        char unaryop;
+        unaryop_t unaryop;
         int type;
         
         void Dump() const override{
@@ -274,10 +301,17 @@ class UnaryExpAST : public BaseAST{
             if (type == 1) return primaryexp_unaryexp->KoopaIR();
             else if (type == 2){
                 ExprResult operand = primaryexp_unaryexp->KoopaIR();
-                if (unaryop == '+') return operand;
+                if (unaryop == UNARY_PLUS) return operand;
                 std::cout <<  "  %" << koopacnt << " = ";
-                if (unaryop == '-') std::cout << "sub 0, ";
-                else if (unaryop == '!') std::cout << "eq 0, ";
+                
+                switch(unaryop) {
+                    case UNARY_PLUS: break;
+                    case UNARY_MINUS:
+                        std::cout << "sub 0, ";
+                        break;
+                    case UNARY_NOT:
+                        std::cout << "eq 0, ";
+                }
 
                 if (operand.is_constant) {
                     std::cout << operand.value;
@@ -285,6 +319,162 @@ class UnaryExpAST : public BaseAST{
                     std::cout << "%" << operand.value;
                 }
                 std::cout << std::endl;
+                return ExprResult(false, koopacnt++);
+            }
+            return ExprResult();
+        }
+};
+
+
+// RelExp ::= AddExp | RelExp ("<" | ">" | "<=" | ">=") AddExp;
+class RelExpAST : public BaseAST{
+    public:
+        int type;
+        std::unique_ptr<BaseAST> addexp;
+        std::unique_ptr<BaseAST> relexp;
+        relop_t relop;
+
+        void Dump() const override{
+            std::cout << "RelExpAST { ";
+            if (type == 1) addexp->Dump();
+            else if (type == 2){
+                relexp->Dump();
+                std::cout << " relop ";
+                addexp->Dump();
+            }
+            std::cout << " }";
+        }
+        
+        ExprResult KoopaIR() const override{
+            if (type == 1) return addexp->KoopaIR();
+            else if (type == 2) {
+                ExprResult left = relexp->KoopaIR();
+                ExprResult right = addexp->KoopaIR();
+                std::cout << "  %" << koopacnt << " = ";
+                switch(relop){
+                    case REL_LT: std::cout << "lt "; break;
+                    case REL_GT: std::cout << "gt "; break;
+                    case REL_LE: std::cout << "le "; break;
+                    case REL_GE: std::cout << "ge "; break;
+                }
+                if (left.is_constant) std::cout << left.value << ", ";
+                else std::cout << "%" << left.value << ", ";
+                if (right.is_constant) std::cout << right.value << std::endl;
+                else std::cout << "%" << right.value << std::endl;
+                return ExprResult(false, koopacnt++);
+            }
+            return ExprResult();
+        }
+};
+
+// EqExp ::= RelExp | EqExp ("==" | "!=") RelExp;
+class EqExpAST : public BaseAST{
+    public:
+        int type;
+        std::unique_ptr<BaseAST> relexp;
+        std::unique_ptr<BaseAST> eqexp;
+        eqop_t eqop;
+
+        void Dump() const override{
+            std::cout << "EqExpAST { ";
+            if (type == 1) relexp->Dump();
+            else if (type == 2) {
+                eqexp->Dump();
+                std::cout << "relop";
+                relexp->Dump();
+            }
+            std::cout << " }";
+        }
+
+        ExprResult KoopaIR() const override{
+            if (type == 1) return relexp->KoopaIR();
+            else if (type == 2){
+                ExprResult left = eqexp->KoopaIR();
+                ExprResult right = relexp->KoopaIR();
+                std::cout << "  %" << koopacnt << " = ";
+                switch (eqop) {
+                    case REL_EQ: std::cout << "eq "; break;
+                    case REL_NE: std::cout << "ne "; break;
+                }
+                if (left.is_constant) std::cout << left.value << ", ";
+                else std::cout << "%" << left.value << ", ";
+                if (right.is_constant) std::cout << right.value << std::endl;
+                else std::cout << "%" << right.value << std::endl;
+
+                return ExprResult(false, koopacnt++);
+            }
+            return ExprResult();
+        }
+};
+
+// LAndExp ::= EqExp | LAndExp "&&" EqExp;
+class LAndExpAST : public BaseAST{
+    public:
+        int type;
+        std::unique_ptr<BaseAST> eqexp;
+        std::unique_ptr<BaseAST> landexp;
+        logicop_t logicop;
+
+        void Dump() const override{
+            std::cout << "LAndExpAST { ";
+            if (type == 1) eqexp->Dump();
+            else if (type == 2) {
+                landexp->Dump();
+                std::cout << "logicop";
+                eqexp->Dump();
+            }
+            std::cout << " }";
+        }
+
+        ExprResult KoopaIR() const override{
+            if (type == 1) return eqexp->KoopaIR();
+            else if (type == 2) {
+                ExprResult left = landexp->KoopaIR();
+                ExprResult right = eqexp->KoopaIR();
+                std::cout << "  %" << koopacnt << " = ";
+                
+                if (left.is_constant) std::cout << left.value << " && ";
+                else std::cout << "%" << left.value << " && ";
+                if (right.is_constant) std::cout << right.value << std::endl;
+                else std::cout << "%" << right.value << std::endl;
+
+                return ExprResult(false, koopacnt++);
+            }
+            return ExprResult();
+        }
+};
+
+// LOrExp ::= LAndExp | LOrExp "||" LAndExp;
+class LOrExpAST : public BaseAST{
+    public:
+        int type;
+        std::unique_ptr<BaseAST> lorexp;
+        std::unique_ptr<BaseAST> landexp;
+        logicop_t logicop;
+        
+        void Dump() const override{
+            std::cout << "LOrExpAST { ";
+            if (type == 1) landexp->Dump();
+            else if (type == 2) {
+                lorexp->Dump();
+                std::cout << "logicop";
+                landexp->Dump();
+            }
+            std::cout << " }";
+        }
+
+        ExprResult KoopaIR() const override{
+            if (type == 1) return landexp->KoopaIR();
+            else if (type == 2) {
+                ExprResult left = lorexp->KoopaIR();
+                ExprResult right = landexp->KoopaIR();
+                std::cout << "  %" << koopacnt << " = ";
+                
+                if (left.is_constant) std::cout << left.value << " || ";
+                else std::cout << "%" << left.value << " || ";
+                if (right.is_constant) std::cout << right.value << std::endl;
+                else std::cout << "%" << right.value << std::endl;
+
                 return ExprResult(false, koopacnt++);
             }
             return ExprResult();
