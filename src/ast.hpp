@@ -3,8 +3,12 @@
 #include<string>
 #include<iostream>
 #include<stdbool.h>
+#include<vector>
+#include<map>
+#include<assert.h>
 
 static int koopacnt;   // 临时变量计数器
+static std::map<std::string, std::int32_t> constMap;
 
 struct ExprResult {
     bool is_constant;
@@ -110,21 +114,42 @@ class FuncTypeAST : public BaseAST{
         };
 };
 
-// Block ::= "{" Stmt "}";
+// Block ::= "{" {BlockItem} "}";
 class BlockAST : public BaseAST{
     public:
-        std::unique_ptr<BaseAST> stmt;
+        std::vector<std::unique_ptr<BaseAST>> blockitem_list;
 
         void Dump() const override{
             std::cout << "BlockAST { ";
-            stmt->Dump();
+            for (const auto& blockitem : blockitem_list){
+                blockitem->Dump();
+            }
             std::cout << " }";
         }
 
         ExprResult KoopaIR() const override{
             std::cout << "%entry:" << std::endl;
-            stmt->KoopaIR();
+            for (const auto& blockitem : blockitem_list){
+                blockitem->KoopaIR();
+            }
             return ExprResult();
+        }
+};
+
+// BlockItem ::= Decl | Stmt;
+class BlockItemAST : public BaseAST{
+    public:
+        int type;
+        std::unique_ptr<BaseAST> decl_stmt;
+
+        void Dump() const override {
+            std::cout << "BlockItemAST { ";
+            decl_stmt->Dump();
+            std::cout << " }";
+        }
+
+        ExprResult KoopaIR() const override {
+            return decl_stmt->KoopaIR();
         }
 };
 
@@ -141,7 +166,7 @@ class StmtAST : public BaseAST{
 
         ExprResult KoopaIR() const override{
             ExprResult result = exp->KoopaIR();
-            std::cout << "  ret";
+            std::cout << "  ret ";
             if (result.is_constant) {
                 std::cout << result.value;
             } else {
@@ -168,27 +193,45 @@ class ExpAST : public BaseAST{
         }
 };
 
-// PrimaryExp ::= "(" Exp ")" | Number;
+// PrimaryExp ::= "(" Exp ")" | LVal | Number;
 // Number ::= INT_CONST;
 class PrimaryExpAST : public BaseAST{
     public:
         int type;
         std::int32_t number;
-        std::unique_ptr<BaseAST> exp;
+        std::unique_ptr<BaseAST> exp_lval;
 
         void Dump() const override{
             std::cout << "PrimaryExpAST { ";
-            if (type == 1) exp->Dump();
+            if (type == 1) exp_lval->Dump();
             else if (type == 2) std::cout << "Number: " << number;
             std::cout << " }";
         }
 
         ExprResult KoopaIR() const override{
-            if (type == 1) return exp->KoopaIR();
+            if (type == 1) return exp_lval->KoopaIR();
             else if (type == 2){
                 return ExprResult(true, number);
             }
             return ExprResult();
+        }
+};
+
+// LVal ::= IDEDNT;
+class LValAST : public BaseAST{
+    public:
+        std::string ident;
+
+        void Dump() const override {
+            std::cout << "LValAST { " << ident << " }";
+        }
+
+        ExprResult KoopaIR() const override {
+            if (constMap.find(ident) != constMap.end()) {
+                return ExprResult(true, constMap[ident]);
+            }
+            else assert(false);
+            return ExprResult();        
         }
 };
 
@@ -217,6 +260,18 @@ class AddExpAST : public BaseAST{
             else if (type == 2) {
                 ExprResult left = addexp->KoopaIR();
                 ExprResult right = mulexp->KoopaIR();
+
+                if (left.is_constant && right.is_constant){
+                    switch (addop) {
+                        case ADD_OP: 
+                            return ExprResult(true, left.value+right.value);
+                            break;
+                        case SUB_OP: 
+                            return ExprResult(true, left.value-right.value);
+                            break;
+                    }
+                }
+
                 std::cout << "  %" << koopacnt << " = ";
                 switch(addop) {
                     case ADD_OP: std::cout << "add "; break;
@@ -259,6 +314,22 @@ class MulExpAST : public BaseAST {
             
             ExprResult left = mulexp->KoopaIR();
             ExprResult right = unaryexp->KoopaIR();
+
+            if (left.is_constant && right.is_constant){
+                switch (mulop) {
+                    case MUL_OP: 
+                        return ExprResult(true, left.value*right.value);
+                        break;
+                    case DIV_OP: 
+                        return ExprResult(true, left.value/right.value);
+                        break;
+                    case MOD_OP: 
+                        return ExprResult(true, left.value%right.value);
+                        break;
+                }
+            }
+
+
             std::cout << "  %" << koopacnt << " = ";
 
             switch(mulop){
@@ -478,5 +549,113 @@ class LOrExpAST : public BaseAST{
                 return ExprResult(false, koopacnt++);
             }
             return ExprResult();
+        }
+};
+
+// Decl ::= ConstDecl;
+class DeclAST : public BaseAST{
+    public:
+        std::unique_ptr<BaseAST> constdecl;
+
+        void Dump() const override{
+            std::cout << "DeclAST { ";
+            constdecl->Dump();
+            std::cout << " }";
+        }
+
+        ExprResult KoopaIR() const override{
+            return constdecl->KoopaIR();
+        }
+};
+
+// ConstDecl ::= "const" BType ConstDef {"," ConstDef} ";";
+class ConstDeclAST : public BaseAST {
+    public:
+        std::unique_ptr<BaseAST> btype;
+        std::vector<std::unique_ptr<BaseAST>> constdef_list;
+
+        void Dump() const override {
+            std::cout << "ConstDecl { ";
+            btype->Dump();
+            for (const auto& constdef : constdef_list) {
+                constdef->Dump();
+            }
+            std::cout << " }";
+        }
+
+        ExprResult KoopaIR() const override {
+            btype->KoopaIR();
+            for (const auto& constdef : constdef_list) {
+                constdef->KoopaIR();
+            }
+            return ExprResult();
+        }
+};
+
+// BType ::= "int";
+class BTypeAST : public BaseAST{
+    public:
+        void Dump() const override{
+            std::cout << "BTypeAST { int }";
+        }
+
+        ExprResult KoopaIR() const override {
+            return ExprResult();
+        }
+};
+
+// ConstDef ::= IDENT "=" ConstInitVal;
+class ConstDefAST : public BaseAST {
+    public:
+        std::string ident;
+        std::unique_ptr<BaseAST> constintval;
+
+        void Dump() const override {
+            std::cout << "ConstDefAST { ";
+            std::cout << "IDENT = " << ident << ", value = ";
+            constintval->Dump();
+            std::cout << " }";
+        }
+
+        ExprResult KoopaIR() const override {
+            ExprResult intval = constintval->KoopaIR();
+            if (intval.is_constant){
+                int num = intval.value;
+                constMap[ident] = num;
+            }
+            else assert(false);
+            return ExprResult();
+        }
+};
+
+// ConstInitVal ::= ConstExp;
+class ConstInitValAST : public BaseAST {
+    public:
+        std::unique_ptr<BaseAST> constexp;
+
+        void Dump() const override {
+            std::cout << "ConstInitValAST { ";
+            constexp->Dump();
+            std::cout << " }";
+        }
+
+        ExprResult KoopaIR() const override {
+            return constexp->KoopaIR();
+        }
+};
+
+// ConstExp ::= Exp
+class ConstExpAST : public BaseAST {
+    public:
+        std::unique_ptr<BaseAST> exp;
+
+        void Dump() const override{
+            std::cout << "ConstExpAST { ";
+            exp->Dump();
+            std::cout << " }";
+        }
+
+        ExprResult KoopaIR() const override {
+            return exp->KoopaIR();
         }
 };

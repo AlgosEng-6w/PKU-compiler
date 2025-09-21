@@ -170,6 +170,15 @@ void Visit(const koopa_raw_value_t &value, const koopa_raw_binary_t &binary) {
             std::cout << "  slt " << result_reg << ", " << lhs_reg << ", " << rhs_reg << std::endl;
             std::cout << "  seqz " << result_reg << ", " << result_reg << std::endl;
             break;
+        case KOOPA_RBO_OR:
+            std::cout << "  or t0, " << lhs_reg << ", " << rhs_reg << std::endl;
+            std::cout << "  snez " << result_reg << ", t0" << std::endl;
+            break;
+        case KOOPA_RBO_AND:
+            std::cout << "  snez t0, " << lhs_reg << std::endl;
+            std::cout << "  snez t1, " << rhs_reg << std::endl;
+            std::cout << "  and " << result_reg << ", t0, t1" << std::endl;
+            break;
         default:
             assert(false);
     }

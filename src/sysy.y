@@ -25,6 +25,7 @@ using namespace std;
     int int_val;
     char char_val;
     BaseAST *ast_val;
+    std::vector<std::unique_ptr<BaseAST>>* ast_list_ptr;
 }
 
 // Token和类型声明：定义词法语法分析器的通信协议
@@ -32,9 +33,12 @@ using namespace std;
 %token <str_val> IDENT
 %token <int_val> INT_CONST
 %token LE GE EQ NE LAND LOR
+%token CONST
 
 %type <ast_val> FuncDef FuncType Block Stmt UnaryExp PrimaryExp AddExp 
 %type <ast_val> LAndExp LOrExp MulExp Exp RelExp EqExp
+%type <ast_val> Decl ConstDecl BType ConstDef ConstInitVal BlockItem ConstExp LVal
+%type <ast_list_ptr> BlockItemList ConstDefList
 
 // 语法规则
 %%
@@ -66,12 +70,43 @@ FuncType
     }
     ;
 
-// Block ::= "{" Stmt "}";
+// Block ::= "{" {BlockItem} "}";
 Block
-    :'{' Stmt '}'{
+    : '{' '}' {
         auto block = make_unique<BlockAST>();
-        block->stmt = unique_ptr<BaseAST>($2);
         $$ = block.release();
+    }
+    |'{' BlockItemList '}'{
+        auto block = make_unique<BlockAST>();
+        block->blockitem_list = move(*($2));
+        delete $2;
+        $$ = block.release();
+    }
+    ;
+
+BlockItemList
+    : BlockItem {
+        auto list = new vector<unique_ptr<BaseAST>>();
+        list->push_back(unique_ptr<BaseAST>($1));
+        $$ = list;
+    }
+    | BlockItemList BlockItem {
+        $1->push_back(unique_ptr<BaseAST>($2));
+        $$ = $1;
+    }
+    ;
+
+// BlockItem ::= Decl | Stmt;
+BlockItem
+    :Decl {
+        auto blockitem = make_unique<BlockItemAST>();
+        blockitem->decl_stmt = unique_ptr<BaseAST>($1);
+        $$ = blockitem.release();
+    }
+    |Stmt {
+        auto blockitem = make_unique<BlockItemAST>();
+        blockitem->decl_stmt = unique_ptr<BaseAST>($1);
+        $$ = blockitem.release();
     }
     ;
 
@@ -93,12 +128,18 @@ Exp
     }
     ;
 
-// PrimaryExp ::= "(" Exp ")" | Number;
+// PrimaryExp ::= "(" Exp ")" | LVal | Number;
 PrimaryExp
     : '(' Exp ')' {
         auto primaryexp = make_unique<PrimaryExpAST>();
         primaryexp->type = 1;
-        primaryexp->exp = unique_ptr<BaseAST>($2);
+        primaryexp->exp_lval = unique_ptr<BaseAST>($2);
+        $$ = primaryexp.release();
+    }
+    | LVal {
+        auto primaryexp = make_unique<PrimaryExpAST>();
+        primaryexp->type = 1;
+        primaryexp->exp_lval = unique_ptr<BaseAST>($1);
         $$ = primaryexp.release();
     }
     | INT_CONST{
@@ -107,6 +148,15 @@ PrimaryExp
         primaryexp->number = $1;
         $$ = primaryexp.release();
     }
+
+// LVal ::= IDEDNT;
+LVal
+    : IDENT{
+        auto lval = make_unique<LValAST>();
+        lval->ident = *unique_ptr<string>($1);
+        $$ = lval.release();
+    }
+    ;
 
 // UnaryExp ::= PrimaryExp | ('-'|'+'|'!') UnaryExp;
 UnaryExp
@@ -302,6 +352,75 @@ LOrExp
         $$ = lorexp.release();
     }
     ;
+
+// Decl ::= ConstDecl;
+Decl
+    : ConstDecl {
+        auto decl = make_unique<DeclAST>();
+        decl->constdecl = std::unique_ptr<BaseAST>($1);
+        $$ = decl.release();
+    }
+
+// ConstDecl ::= "const" BType ConstDef {"," ConstDef} ";";
+ConstDecl
+    : CONST BType ConstDefList ';' {
+        auto constdecl = make_unique<ConstDeclAST>();
+        constdecl->btype = unique_ptr<BaseAST>($2);
+        constdecl->constdef_list = move(*($3));
+        delete $3;
+        $$ = constdecl.release();
+    }
+    ;
+
+ConstDefList
+    : ConstDef {
+        auto list = new vector<unique_ptr<BaseAST>>();
+        list->push_back(unique_ptr<BaseAST>($1));
+        $$ = list;
+    }
+    | ConstDefList ',' ConstDef {
+        $1->push_back(unique_ptr<BaseAST>($3));
+        $$ = $1;
+    }
+    ;
+
+// BType ::= "int";
+BType
+    : INT {
+        auto btype = make_unique<BTypeAST>();
+        $$ = btype.release();
+    }
+    ;
+
+// ConstDef ::= IDENT "=" ConstInitVal;
+ConstDef 
+    : IDENT '=' ConstInitVal{
+        auto constdef = make_unique<ConstDefAST>();
+        constdef->ident = *unique_ptr<string>($1);
+        constdef->constintval = unique_ptr<BaseAST>($3);
+        $$ = constdef.release();
+    }
+    ;
+
+// ConstInitVal ::= ConstExp;
+ConstInitVal
+    : ConstExp{
+        auto constinitval = make_unique<ConstInitValAST>();
+        constinitval->constexp = unique_ptr<BaseAST>($1);
+        $$ = constinitval.release();
+    }
+    ;
+
+// ConstExp ::= Exp
+ConstExp
+    : Exp{
+        auto constexp = make_unique<ConstExpAST>();
+        constexp->exp = unique_ptr<BaseAST>($1);
+        $$ = constexp.release();
+    }
+    ;
+
+
 
 // 额外插入辅助函数
 %%
