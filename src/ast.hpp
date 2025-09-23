@@ -8,7 +8,20 @@
 #include<assert.h>
 
 static int koopacnt;   // 临时变量计数器
-static std::map<std::string, std::int32_t> constMap;
+static int allocnt;      // 内存分配计数器
+
+struct SymbolInfo {
+    enum SymbolType {CONSTANT, VARIABLE};
+    SymbolType type;
+    union {
+        int const_value;
+        int alloc_id;
+    };
+    SymbolInfo(int value) : type(CONSTANT), const_value(value) {}
+    SymbolInfo(SymbolType t, int id) : type(t), alloc_id(id) {}
+};
+
+static std::map<std::string, SymbolInfo> symbolTable;
 
 struct ExprResult {
     bool is_constant;
@@ -207,10 +220,10 @@ class ConstDefAST : public BaseAST {
         }
 
         ExprResult KoopaIR() const override {
+            if (symbolTable.find(ident) != symbolTable.end()) assert(false);
             ExprResult intval = constintval->KoopaIR();
             if (intval.is_constant){
-                int num = intval.value;
-                constMap[ident] = num;
+                symbolTable.emplace(ident, intval.value);
             }
             else assert(false);
             return ExprResult();
@@ -250,10 +263,76 @@ class ConstExpAST : public BaseAST {
 };
 
 // VarDecl ::= BType VarDef {"," VarDef} ";";
+class VarDeclAST : public BaseAST {
+    public:
+        std::unique_ptr<BaseAST> btype;
+        std::vector<std::unique_ptr<BaseAST>> vardef_list;
+
+        void Dump() const override {
+            std::cout << "VarDeclAST { ";
+            btype->Dump();
+            for (const auto& vardef : vardef_list) {
+                vardef->Dump();
+            }
+        }
+
+        ExprResult KoopaIR() const override {
+            btype->KoopaIR();
+            for (const auto& vardef : vardef_list) {
+                vardef->KoopaIR();
+            }
+            return ExprResult();
+        }
+};
 
 // VarDef ::= IDENT | IDENT "=" InitVal;
+class VarDefAST : public BaseAST {
+    public:
+        std::string ident;
+        int type;
+        std::unique_ptr<BaseAST> initval;
 
+        void Dump() const override {
+            std::cout << "VarDefAST { ";
+            if (type == 1) std::cout << ident;
+            else if (type == 2) {
+                std::cout << "IDENT = " << ident << ", value = ";
+                initval->Dump();
+            }
+            std::cout << " }";
+        }
+
+        ExprResult KoopaIR() const override {
+            if (symbolTable.find(ident) != symbolTable.end()) assert(false);
+            symbolTable.emplace(ident, SymbolInfo(SymbolInfo::VARIABLE, allocnt++));
+            std::cout << "  @" << ident << " = alloc i32" << std::endl;
+
+            if (type == 2) {
+                ExprResult intval = initval->KoopaIR();
+                if (intval.is_constant) {
+                    std::cout << "  store " << intval.value << ", @" << ident << std::endl;
+                }
+                else assert(false);
+            }
+            return ExprResult();
+        }
+};
 // InitVal ::= Exp;
+class InitValAST : public BaseAST {
+    public:    
+        std::unique_ptr<BaseAST> exp;
+
+        void Dump() const override {
+            std::cout << "InitValAST { ";
+            exp->Dump();
+            std::cout << std::endl;
+        }
+
+        ExprResult KoopaIR() const override {
+            exp->KoopaIR();
+            return ExprResult();
+        }
+};
 
 // BType ::= "int";
 class BTypeAST : public BaseAST{
@@ -263,32 +342,6 @@ class BTypeAST : public BaseAST{
         }
 
         ExprResult KoopaIR() const override {
-            return ExprResult();
-        }
-};
-
-
-
-// Stmt ::= LVal "=" Exp ";" | "return" Exp ";";
-class StmtAST : public BaseAST{
-    public:
-        std::unique_ptr<BaseAST> exp;
-
-        void Dump() const override{
-            std::cout << "StmtAST { ";
-            exp->Dump();
-            std::cout << " }";
-        }
-
-        ExprResult KoopaIR() const override{
-            ExprResult result = exp->KoopaIR();
-            std::cout << "  ret ";
-            if (result.is_constant) {
-                std::cout << result.value;
-            } else {
-                std::cout << " %" <<result.value;
-            }
-            std::cout << std::endl;
             return ExprResult();
         }
 };
@@ -303,11 +356,60 @@ class LValAST : public BaseAST{
         }
 
         ExprResult KoopaIR() const override {
-            if (constMap.find(ident) != constMap.end()) {
-                return ExprResult(true, constMap[ident]);
+            auto id_info = symbolTable.find(ident);
+            if (id_info != symbolTable.end()) {
+                if (id_info->second.type == SymbolInfo::CONSTANT) {
+                    return ExprResult(true, id_info->second.const_value);
+                } else {
+                    std::cout << "  %" << koopacnt << " = load @" << ident << std::endl;
+                    return ExprResult(false, koopacnt++);
+                }
             }
             else assert(false);
             return ExprResult();        
+        }
+};
+
+// Stmt ::= LVal "=" Exp ";" | "return" Exp ";";
+class StmtAST : public BaseAST{
+    public:
+        std::unique_ptr<BaseAST> exp;
+        std::unique_ptr<BaseAST> lval;
+        int type;
+
+        void Dump() const override{
+            std::cout << "StmtAST { ";
+            exp->Dump();
+            if (type == 1){
+                lval->Dump();
+            }
+            std::cout << " }";
+        }
+
+        ExprResult KoopaIR() const override{
+            if (type == 1) {
+                LValAST* lval_ptr = static_cast<LValAST*>(lval.get());
+                auto it = symbolTable.find(lval_ptr->ident);
+                if (it == symbolTable.end()) assert(false);
+                if (it->second.type == SymbolInfo::CONSTANT) assert(false);
+
+                ExprResult result = exp->KoopaIR();
+                std::cout << "  store ";
+                if (result.is_constant) std::cout << result.value;
+                else std::cout << "%" << result.value;
+                std::cout << ", @" << lval_ptr->ident << std::endl;
+                return ExprResult();
+            } else {
+                ExprResult result = exp->KoopaIR();
+                std::cout << "  ret ";
+                if (result.is_constant) {
+                    std::cout << result.value;
+                } else {
+                    std::cout << " %" <<result.value;
+                }
+                std::cout << std::endl;
+                return ExprResult();
+            }
         }
 };
 

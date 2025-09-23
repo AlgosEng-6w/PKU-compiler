@@ -36,9 +36,9 @@ using namespace std;
 %token CONST
 
 %type <ast_val> FuncDef FuncType Block Stmt UnaryExp PrimaryExp AddExp 
-%type <ast_val> LAndExp LOrExp MulExp Exp RelExp EqExp
+%type <ast_val> LAndExp LOrExp MulExp Exp RelExp EqExp VarDecl VarDef InitVal
 %type <ast_val> Decl ConstDecl BType ConstDef ConstInitVal BlockItem ConstExp LVal
-%type <ast_list_ptr> BlockItemList ConstDefList
+%type <ast_list_ptr> BlockItemList ConstDefList VarDefList
 
 // 语法规则
 %%
@@ -114,7 +114,12 @@ BlockItem
 Decl
     : ConstDecl {
         auto decl = make_unique<DeclAST>();
-        decl->constdecl = std::unique_ptr<BaseAST>($1);
+        decl->const_vardecl = std::unique_ptr<BaseAST>($1);
+        $$ = decl.release();
+    }
+    | VarDecl {
+        auto decl = make_unique<DeclAST>();
+        decl->const_vardecl = std::unique_ptr<BaseAST>($1);
         $$ = decl.release();
     }
 
@@ -170,10 +175,51 @@ ConstExp
     ;
 
 // VarDecl ::= BType VarDef {"," VarDef} ";";
+VarDecl
+    : BType VarDefList ';'{
+        auto vardecl = make_unique<VarDeclAST>();
+        vardecl->btype = unique_ptr<BaseAST>($1);
+        vardecl->vardef_list = move(*($2));
+        delete($2);
+        $$ = vardecl.release();
+    }
+    ;
+
+VarDefList
+    : VarDef {
+        auto list = new vector<unique_ptr<BaseAST>>();
+        list->push_back(unique_ptr<BaseAST>($1));
+        $$ = list;
+    }
+    | VarDefList ',' VarDef {
+        $1->push_back(unique_ptr<BaseAST>($3));
+        $$ = $1;
+    }
+    ;
 
 // VarDef ::= IDENT | IDENT "=" InitVal;
+VarDef
+    : IDENT {
+        auto vardef = make_unique<VarDefAST>();
+        vardef->ident = *unique_ptr<string>($1);
+        vardef.release();
+    }
+    | IDENT '=' InitVal {
+        auto vardef = make_unique<VarDefAST>();
+        vardef->ident = *unique_ptr<string>($1);
+        vardef->initval = unique_ptr<BaseAST>($3);
+        $$ = vardef.release();
+    }
+    ;
 
 // InitVal ::= Exp;
+InitVal
+    : Exp {
+        auto initval = make_unique<InitValAST>();
+        initval->exp = unique_ptr<BaseAST>($1);
+        $$ = initval.release();
+    }
+    ;
 
 // BType ::= "int";
 BType
@@ -183,21 +229,29 @@ BType
     }
     ;
 
-// Stmt ::= "return" Exp ";";
-Stmt
-    :RETURN Exp ';'{
-        auto stmt = make_unique<StmtAST>();
-        stmt->exp = unique_ptr<BaseAST>($2);
-        $$ = stmt.release();
-    }
-    ;
-
 // LVal ::= IDEDNT;
 LVal
     : IDENT{
         auto lval = make_unique<LValAST>();
         lval->ident = *unique_ptr<string>($1);
         $$ = lval.release();
+    }
+    ;
+
+// Stmt ::= LVal "=" Exp ";" | "return" Exp ";";
+Stmt
+    :LVal '=' Exp ';'{
+        auto stmt = make_unique<StmtAST>();
+        stmt->type = 1;
+        stmt->lval = unique_ptr<BaseAST>($1);
+        stmt->exp = unique_ptr<BaseAST>($3);
+        $$ = stmt.release();
+    }
+    |RETURN Exp ';'{
+        auto stmt = make_unique<StmtAST>();
+        stmt->type = 2;
+        stmt->exp = unique_ptr<BaseAST>($2);
+        $$ = stmt.release();
     }
     ;
 

@@ -67,3 +67,13 @@ make
 build/compiler -koopa hello.c -o hello.koopa
 build/compiler -riscv hello.c -o hello.riscv
 exit
+make
+make
+make
+make
+make
+make
+build/compiler -koopa hello.c -o hello.koopa
+make
+build/compiler -koopa hello.c -o hello.koopa
+exit
