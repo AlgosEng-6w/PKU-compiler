@@ -110,12 +110,94 @@ BlockItem
     }
     ;
 
+// Decl ::= ConstDecl | VarDecl;
+Decl
+    : ConstDecl {
+        auto decl = make_unique<DeclAST>();
+        decl->constdecl = std::unique_ptr<BaseAST>($1);
+        $$ = decl.release();
+    }
+
+// ConstDecl ::= "const" BType ConstDef {"," ConstDef} ";";
+ConstDecl
+    : CONST BType ConstDefList ';' {
+        auto constdecl = make_unique<ConstDeclAST>();
+        constdecl->btype = unique_ptr<BaseAST>($2);
+        constdecl->constdef_list = move(*($3));
+        delete $3;
+        $$ = constdecl.release();
+    }
+    ;
+
+ConstDefList
+    : ConstDef {
+        auto list = new vector<unique_ptr<BaseAST>>();
+        list->push_back(unique_ptr<BaseAST>($1));
+        $$ = list;
+    }
+    | ConstDefList ',' ConstDef {
+        $1->push_back(unique_ptr<BaseAST>($3));
+        $$ = $1;
+    }
+    ;
+
+// ConstDef ::= IDENT "=" ConstInitVal;
+ConstDef 
+    : IDENT '=' ConstInitVal{
+        auto constdef = make_unique<ConstDefAST>();
+        constdef->ident = *unique_ptr<string>($1);
+        constdef->constintval = unique_ptr<BaseAST>($3);
+        $$ = constdef.release();
+    }
+    ;
+
+// ConstInitVal ::= ConstExp;
+ConstInitVal
+    : ConstExp{
+        auto constinitval = make_unique<ConstInitValAST>();
+        constinitval->constexp = unique_ptr<BaseAST>($1);
+        $$ = constinitval.release();
+    }
+    ;
+
+// ConstExp ::= Exp
+ConstExp
+    : Exp{
+        auto constexp = make_unique<ConstExpAST>();
+        constexp->exp = unique_ptr<BaseAST>($1);
+        $$ = constexp.release();
+    }
+    ;
+
+// VarDecl ::= BType VarDef {"," VarDef} ";";
+
+// VarDef ::= IDENT | IDENT "=" InitVal;
+
+// InitVal ::= Exp;
+
+// BType ::= "int";
+BType
+    : INT {
+        auto btype = make_unique<BTypeAST>();
+        $$ = btype.release();
+    }
+    ;
+
 // Stmt ::= "return" Exp ";";
 Stmt
     :RETURN Exp ';'{
         auto stmt = make_unique<StmtAST>();
         stmt->exp = unique_ptr<BaseAST>($2);
         $$ = stmt.release();
+    }
+    ;
+
+// LVal ::= IDEDNT;
+LVal
+    : IDENT{
+        auto lval = make_unique<LValAST>();
+        lval->ident = *unique_ptr<string>($1);
+        $$ = lval.release();
     }
     ;
 
@@ -128,66 +210,111 @@ Exp
     }
     ;
 
-// PrimaryExp ::= "(" Exp ")" | LVal | Number;
-PrimaryExp
-    : '(' Exp ')' {
-        auto primaryexp = make_unique<PrimaryExpAST>();
-        primaryexp->type = 1;
-        primaryexp->exp_lval = unique_ptr<BaseAST>($2);
-        $$ = primaryexp.release();
-    }
-    | LVal {
-        auto primaryexp = make_unique<PrimaryExpAST>();
-        primaryexp->type = 1;
-        primaryexp->exp_lval = unique_ptr<BaseAST>($1);
-        $$ = primaryexp.release();
-    }
-    | INT_CONST{
-        auto primaryexp = make_unique<PrimaryExpAST>();
-        primaryexp->type = 2;
-        primaryexp->number = $1;
-        $$ = primaryexp.release();
-    }
 
-// LVal ::= IDEDNT;
-LVal
-    : IDENT{
-        auto lval = make_unique<LValAST>();
-        lval->ident = *unique_ptr<string>($1);
-        $$ = lval.release();
+// LOrExp ::= LAndExp | LOrExp LOR LAndExp;
+LOrExp
+    : LAndExp {
+        auto lorexp = make_unique<LOrExpAST>();
+        lorexp->type = 1;
+        lorexp->landexp = unique_ptr<BaseAST>($1);
+        $$ = lorexp.release();
+    }
+    | LOrExp LOR LAndExp {
+        auto lorexp = make_unique<LOrExpAST>();
+        lorexp->type = 2;
+        lorexp->lorexp = unique_ptr<BaseAST>($1);
+        lorexp->logicop = LOR_OP;
+        lorexp->landexp = unique_ptr<BaseAST>($3);
+        $$ = lorexp.release();
     }
     ;
 
-// UnaryExp ::= PrimaryExp | ('-'|'+'|'!') UnaryExp;
-UnaryExp
-    : PrimaryExp {
-        auto unaryexp = make_unique<UnaryExpAST>();
-        unaryexp->type = 1;
-        unaryexp->primaryexp_unaryexp = unique_ptr<BaseAST>($1);
-        $$ = unaryexp.release();
+// LAndExp ::= EqExp | LAndExp LAND EqExp;
+LAndExp
+    : EqExp {
+        auto landexp = make_unique<LAndExpAST>();
+        landexp->type = 1;
+        landexp->eqexp = unique_ptr<BaseAST>($1);
+        $$ = landexp.release();
     }
-    | '+' UnaryExp {
-        auto unaryexp = make_unique<UnaryExpAST>();
-        unaryexp->type = 2;
-        unaryexp->unaryop = UNARY_PLUS;
-        unaryexp->primaryexp_unaryexp = unique_ptr<BaseAST>($2);
-        $$ = unaryexp.release();
-    }
-    | '-' UnaryExp {
-        auto unaryexp = make_unique<UnaryExpAST>();
-        unaryexp->type = 2;
-        unaryexp->unaryop = UNARY_MINUS;
-        unaryexp->primaryexp_unaryexp = unique_ptr<BaseAST>($2);
-        $$ = unaryexp.release();
-    }
-    | '!' UnaryExp {
-        auto unaryexp = make_unique<UnaryExpAST>();
-        unaryexp->type = 2;
-        unaryexp->unaryop = UNARY_NOT;
-        unaryexp->primaryexp_unaryexp = unique_ptr<BaseAST>($2);
-        $$ = unaryexp.release();
+    | LAndExp LAND EqExp {
+        auto landexp = make_unique<LAndExpAST>();
+        landexp->type = 2;
+        landexp->landexp = unique_ptr<BaseAST>($1);
+        landexp->logicop = LAND_OP;
+        landexp->eqexp = unique_ptr<BaseAST>($3);
+        $$ = landexp.release();
     }
     ;
+
+// EqExp ::= RelExp | EqExp (EQ | NE) RelExp;
+EqExp
+    : RelExp {
+        auto eqexp = make_unique<EqExpAST>();
+        eqexp->type = 1;
+        eqexp->relexp = unique_ptr<BaseAST>($1);
+        $$ = eqexp.release();
+    }
+    | EqExp EQ RelExp {
+        auto eqexp = make_unique<EqExpAST>();
+        eqexp->type = 2;
+        eqexp->eqexp = unique_ptr<BaseAST>($1);
+        eqexp->eqop = REL_EQ;
+        eqexp->relexp = unique_ptr<BaseAST>($3);
+        $$ = eqexp.release();
+    }
+    | EqExp NE RelExp {
+        auto eqexp = make_unique<EqExpAST>();
+        eqexp->type = 2;
+        eqexp->eqexp = unique_ptr<BaseAST>($1);
+        eqexp->eqop = REL_NE;
+        eqexp->relexp = unique_ptr<BaseAST>($3);
+        $$ = eqexp.release();
+    }
+    ;
+
+// RelExp ::= AddExp | RelExp ("<" | ">" | LE | GE) AddExp;
+RelExp
+    : AddExp {
+        auto relexp = make_unique<RelExpAST>();
+        relexp->type = 1;
+        relexp->addexp = unique_ptr<BaseAST>($1);
+        $$ = relexp.release();
+    }
+    | RelExp '<' AddExp {
+        auto relexp = make_unique<RelExpAST>();
+        relexp->type = 2;
+        relexp->relexp = unique_ptr<BaseAST>($1);
+        relexp->relop = REL_LT;
+        relexp->addexp = unique_ptr<BaseAST>($3);
+        $$ = relexp.release();
+    }
+    | RelExp '>' AddExp {
+        auto relexp = make_unique<RelExpAST>();
+        relexp->type = 2;
+        relexp->relexp = unique_ptr<BaseAST>($1);
+        relexp->relop = REL_GT;
+        relexp->addexp = unique_ptr<BaseAST>($3);
+        $$ = relexp.release();
+    }
+    | RelExp LE AddExp {
+        auto relexp = make_unique<RelExpAST>();
+        relexp->type = 2;
+        relexp->relexp = unique_ptr<BaseAST>($1);
+        relexp->relop = REL_LE;
+        relexp->addexp = unique_ptr<BaseAST>($3);
+        $$ = relexp.release();
+    }
+    | RelExp GE AddExp {
+        auto relexp = make_unique<RelExpAST>();
+        relexp->type = 2;
+        relexp->relexp = unique_ptr<BaseAST>($1);
+        relexp->relop = REL_GE;
+        relexp->addexp = unique_ptr<BaseAST>($3);
+        $$ = relexp.release();
+    }
+    ;
+
 
 // AddExp ::= MulExp | AddExp ("+" | "-") MulExp;
 AddExp
@@ -248,178 +375,58 @@ MulExp
         $$ = mulexp.release();
     }
     ;
-    
-// RelExp ::= AddExp | RelExp ("<" | ">" | LE | GE) AddExp;
-RelExp
-    : AddExp {
-        auto relexp = make_unique<RelExpAST>();
-        relexp->type = 1;
-        relexp->addexp = unique_ptr<BaseAST>($1);
-        $$ = relexp.release();
+
+// UnaryExp ::= PrimaryExp | ('-'|'+'|'!') UnaryExp;
+UnaryExp
+    : PrimaryExp {
+        auto unaryexp = make_unique<UnaryExpAST>();
+        unaryexp->type = 1;
+        unaryexp->primaryexp_unaryexp = unique_ptr<BaseAST>($1);
+        $$ = unaryexp.release();
     }
-    | RelExp '<' AddExp {
-        auto relexp = make_unique<RelExpAST>();
-        relexp->type = 2;
-        relexp->relexp = unique_ptr<BaseAST>($1);
-        relexp->relop = REL_LT;
-        relexp->addexp = unique_ptr<BaseAST>($3);
-        $$ = relexp.release();
+    | '+' UnaryExp {
+        auto unaryexp = make_unique<UnaryExpAST>();
+        unaryexp->type = 2;
+        unaryexp->unaryop = UNARY_PLUS;
+        unaryexp->primaryexp_unaryexp = unique_ptr<BaseAST>($2);
+        $$ = unaryexp.release();
     }
-    | RelExp '>' AddExp {
-        auto relexp = make_unique<RelExpAST>();
-        relexp->type = 2;
-        relexp->relexp = unique_ptr<BaseAST>($1);
-        relexp->relop = REL_GT;
-        relexp->addexp = unique_ptr<BaseAST>($3);
-        $$ = relexp.release();
+    | '-' UnaryExp {
+        auto unaryexp = make_unique<UnaryExpAST>();
+        unaryexp->type = 2;
+        unaryexp->unaryop = UNARY_MINUS;
+        unaryexp->primaryexp_unaryexp = unique_ptr<BaseAST>($2);
+        $$ = unaryexp.release();
     }
-    | RelExp LE AddExp {
-        auto relexp = make_unique<RelExpAST>();
-        relexp->type = 2;
-        relexp->relexp = unique_ptr<BaseAST>($1);
-        relexp->relop = REL_LE;
-        relexp->addexp = unique_ptr<BaseAST>($3);
-        $$ = relexp.release();
-    }
-    | RelExp GE AddExp {
-        auto relexp = make_unique<RelExpAST>();
-        relexp->type = 2;
-        relexp->relexp = unique_ptr<BaseAST>($1);
-        relexp->relop = REL_GE;
-        relexp->addexp = unique_ptr<BaseAST>($3);
-        $$ = relexp.release();
+    | '!' UnaryExp {
+        auto unaryexp = make_unique<UnaryExpAST>();
+        unaryexp->type = 2;
+        unaryexp->unaryop = UNARY_NOT;
+        unaryexp->primaryexp_unaryexp = unique_ptr<BaseAST>($2);
+        $$ = unaryexp.release();
     }
     ;
 
-// EqExp ::= RelExp | EqExp (EQ | NE) RelExp;
-EqExp
-    : RelExp {
-        auto eqexp = make_unique<EqExpAST>();
-        eqexp->type = 1;
-        eqexp->relexp = unique_ptr<BaseAST>($1);
-        $$ = eqexp.release();
+// PrimaryExp ::= "(" Exp ")" | LVal | Number;
+PrimaryExp
+    : '(' Exp ')' {
+        auto primaryexp = make_unique<PrimaryExpAST>();
+        primaryexp->type = 1;
+        primaryexp->exp_lval = unique_ptr<BaseAST>($2);
+        $$ = primaryexp.release();
     }
-    | EqExp EQ RelExp {
-        auto eqexp = make_unique<EqExpAST>();
-        eqexp->type = 2;
-        eqexp->eqexp = unique_ptr<BaseAST>($1);
-        eqexp->eqop = REL_EQ;
-        eqexp->relexp = unique_ptr<BaseAST>($3);
-        $$ = eqexp.release();
+    | LVal {
+        auto primaryexp = make_unique<PrimaryExpAST>();
+        primaryexp->type = 1;
+        primaryexp->exp_lval = unique_ptr<BaseAST>($1);
+        $$ = primaryexp.release();
     }
-    | EqExp NE RelExp {
-        auto eqexp = make_unique<EqExpAST>();
-        eqexp->type = 2;
-        eqexp->eqexp = unique_ptr<BaseAST>($1);
-        eqexp->eqop = REL_NE;
-        eqexp->relexp = unique_ptr<BaseAST>($3);
-        $$ = eqexp.release();
+    | INT_CONST{
+        auto primaryexp = make_unique<PrimaryExpAST>();
+        primaryexp->type = 2;
+        primaryexp->number = $1;
+        $$ = primaryexp.release();
     }
-    ;
-
-// LAndExp ::= EqExp | LAndExp LAND EqExp;
-LAndExp
-    : EqExp {
-        auto landexp = make_unique<LAndExpAST>();
-        landexp->type = 1;
-        landexp->eqexp = unique_ptr<BaseAST>($1);
-        $$ = landexp.release();
-    }
-    | LAndExp LAND EqExp {
-        auto landexp = make_unique<LAndExpAST>();
-        landexp->type = 2;
-        landexp->landexp = unique_ptr<BaseAST>($1);
-        landexp->logicop = LAND_OP;
-        landexp->eqexp = unique_ptr<BaseAST>($3);
-        $$ = landexp.release();
-    }
-    ;
-
-// LOrExp ::= LAndExp | LOrExp LOR LAndExp;
-LOrExp
-    : LAndExp {
-        auto lorexp = make_unique<LOrExpAST>();
-        lorexp->type = 1;
-        lorexp->landexp = unique_ptr<BaseAST>($1);
-        $$ = lorexp.release();
-    }
-    | LOrExp LOR LAndExp {
-        auto lorexp = make_unique<LOrExpAST>();
-        lorexp->type = 2;
-        lorexp->lorexp = unique_ptr<BaseAST>($1);
-        lorexp->logicop = LOR_OP;
-        lorexp->landexp = unique_ptr<BaseAST>($3);
-        $$ = lorexp.release();
-    }
-    ;
-
-// Decl ::= ConstDecl;
-Decl
-    : ConstDecl {
-        auto decl = make_unique<DeclAST>();
-        decl->constdecl = std::unique_ptr<BaseAST>($1);
-        $$ = decl.release();
-    }
-
-// ConstDecl ::= "const" BType ConstDef {"," ConstDef} ";";
-ConstDecl
-    : CONST BType ConstDefList ';' {
-        auto constdecl = make_unique<ConstDeclAST>();
-        constdecl->btype = unique_ptr<BaseAST>($2);
-        constdecl->constdef_list = move(*($3));
-        delete $3;
-        $$ = constdecl.release();
-    }
-    ;
-
-ConstDefList
-    : ConstDef {
-        auto list = new vector<unique_ptr<BaseAST>>();
-        list->push_back(unique_ptr<BaseAST>($1));
-        $$ = list;
-    }
-    | ConstDefList ',' ConstDef {
-        $1->push_back(unique_ptr<BaseAST>($3));
-        $$ = $1;
-    }
-    ;
-
-// BType ::= "int";
-BType
-    : INT {
-        auto btype = make_unique<BTypeAST>();
-        $$ = btype.release();
-    }
-    ;
-
-// ConstDef ::= IDENT "=" ConstInitVal;
-ConstDef 
-    : IDENT '=' ConstInitVal{
-        auto constdef = make_unique<ConstDefAST>();
-        constdef->ident = *unique_ptr<string>($1);
-        constdef->constintval = unique_ptr<BaseAST>($3);
-        $$ = constdef.release();
-    }
-    ;
-
-// ConstInitVal ::= ConstExp;
-ConstInitVal
-    : ConstExp{
-        auto constinitval = make_unique<ConstInitValAST>();
-        constinitval->constexp = unique_ptr<BaseAST>($1);
-        $$ = constinitval.release();
-    }
-    ;
-
-// ConstExp ::= Exp
-ConstExp
-    : Exp{
-        auto constexp = make_unique<ConstExpAST>();
-        constexp->exp = unique_ptr<BaseAST>($1);
-        $$ = constexp.release();
-    }
-    ;
-
 
 
 // 额外插入辅助函数

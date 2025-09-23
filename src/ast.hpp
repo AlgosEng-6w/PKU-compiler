@@ -153,7 +153,123 @@ class BlockItemAST : public BaseAST{
         }
 };
 
-// Stmt ::= "return" Exp ";";
+// Decl ::= ConstDecl | VarDecl;
+class DeclAST : public BaseAST{
+    public:
+        std::unique_ptr<BaseAST> const_vardecl;
+
+        void Dump() const override{
+            std::cout << "DeclAST { ";
+            const_vardecl->Dump();
+            std::cout << " }";
+        }
+
+        ExprResult KoopaIR() const override{
+            return const_vardecl->KoopaIR();
+        }
+};
+
+// ConstDecl ::= "const" BType ConstDef {"," ConstDef} ";";
+class ConstDeclAST : public BaseAST {
+    public:
+        std::unique_ptr<BaseAST> btype;
+        std::vector<std::unique_ptr<BaseAST>> constdef_list;
+
+        void Dump() const override {
+            std::cout << "ConstDecl { ";
+            btype->Dump();
+            for (const auto& constdef : constdef_list) {
+                constdef->Dump();
+            }
+            std::cout << " }";
+        }
+
+        ExprResult KoopaIR() const override {
+            btype->KoopaIR();
+            for (const auto& constdef : constdef_list) {
+                constdef->KoopaIR();
+            }
+            return ExprResult();
+        }
+};
+
+// ConstDef ::= IDENT "=" ConstInitVal;
+class ConstDefAST : public BaseAST {
+    public:
+        std::string ident;
+        std::unique_ptr<BaseAST> constintval;
+
+        void Dump() const override {
+            std::cout << "ConstDefAST { ";
+            std::cout << "IDENT = " << ident << ", value = ";
+            constintval->Dump();
+            std::cout << " }";
+        }
+
+        ExprResult KoopaIR() const override {
+            ExprResult intval = constintval->KoopaIR();
+            if (intval.is_constant){
+                int num = intval.value;
+                constMap[ident] = num;
+            }
+            else assert(false);
+            return ExprResult();
+        }
+};
+
+// ConstInitVal ::= ConstExp;
+class ConstInitValAST : public BaseAST {
+    public:
+        std::unique_ptr<BaseAST> constexp;
+
+        void Dump() const override {
+            std::cout << "ConstInitValAST { ";
+            constexp->Dump();
+            std::cout << " }";
+        }
+
+        ExprResult KoopaIR() const override {
+            return constexp->KoopaIR();
+        }
+};
+
+// ConstExp ::= Exp
+class ConstExpAST : public BaseAST {
+    public:
+        std::unique_ptr<BaseAST> exp;
+
+        void Dump() const override{
+            std::cout << "ConstExpAST { ";
+            exp->Dump();
+            std::cout << " }";
+        }
+
+        ExprResult KoopaIR() const override {
+            return exp->KoopaIR();
+        }
+};
+
+// VarDecl ::= BType VarDef {"," VarDef} ";";
+
+// VarDef ::= IDENT | IDENT "=" InitVal;
+
+// InitVal ::= Exp;
+
+// BType ::= "int";
+class BTypeAST : public BaseAST{
+    public:
+        void Dump() const override{
+            std::cout << "BTypeAST { int }";
+        }
+
+        ExprResult KoopaIR() const override {
+            return ExprResult();
+        }
+};
+
+
+
+// Stmt ::= LVal "=" Exp ";" | "return" Exp ";";
 class StmtAST : public BaseAST{
     public:
         std::unique_ptr<BaseAST> exp;
@@ -177,46 +293,6 @@ class StmtAST : public BaseAST{
         }
 };
 
-// Exp ::= LOrExp;
-class ExpAST : public BaseAST{
-    public:
-        std::unique_ptr<BaseAST> lorexp;
-
-        void Dump() const override{
-            std::cout << "ExpAST { ";
-            lorexp->Dump();
-            std::cout << " }";
-        }
-
-        ExprResult KoopaIR() const override{
-            return lorexp->KoopaIR();
-        }
-};
-
-// PrimaryExp ::= "(" Exp ")" | LVal | Number;
-// Number ::= INT_CONST;
-class PrimaryExpAST : public BaseAST{
-    public:
-        int type;
-        std::int32_t number;
-        std::unique_ptr<BaseAST> exp_lval;
-
-        void Dump() const override{
-            std::cout << "PrimaryExpAST { ";
-            if (type == 1) exp_lval->Dump();
-            else if (type == 2) std::cout << "Number: " << number;
-            std::cout << " }";
-        }
-
-        ExprResult KoopaIR() const override{
-            if (type == 1) return exp_lval->KoopaIR();
-            else if (type == 2){
-                return ExprResult(true, number);
-            }
-            return ExprResult();
-        }
-};
-
 // LVal ::= IDEDNT;
 class LValAST : public BaseAST{
     public:
@@ -234,6 +310,178 @@ class LValAST : public BaseAST{
             return ExprResult();        
         }
 };
+
+// Exp ::= LOrExp;
+class ExpAST : public BaseAST{
+    public:
+        std::unique_ptr<BaseAST> lorexp;
+
+        void Dump() const override{
+            std::cout << "ExpAST { ";
+            lorexp->Dump();
+            std::cout << " }";
+        }
+
+        ExprResult KoopaIR() const override{
+            return lorexp->KoopaIR();
+        }
+};
+
+// LOrExp ::= LAndExp | LOrExp "||" LAndExp;
+class LOrExpAST : public BaseAST{
+    public:
+        int type;
+        std::unique_ptr<BaseAST> lorexp;
+        std::unique_ptr<BaseAST> landexp;
+        logicop_t logicop;
+        
+        void Dump() const override{
+            std::cout << "LOrExpAST { ";
+            if (type == 1) landexp->Dump();
+            else if (type == 2) {
+                lorexp->Dump();
+                std::cout << "logicop";
+                landexp->Dump();
+            }
+            std::cout << " }";
+        }
+
+        ExprResult KoopaIR() const override{
+            if (type == 1) return landexp->KoopaIR();
+            else if (type == 2) {
+                ExprResult left = lorexp->KoopaIR();
+                ExprResult right = landexp->KoopaIR();
+                std::cout << "  %" << koopacnt << " = ";
+                
+                if (left.is_constant) std::cout << left.value << " || ";
+                else std::cout << "%" << left.value << " || ";
+                if (right.is_constant) std::cout << right.value << std::endl;
+                else std::cout << "%" << right.value << std::endl;
+
+                return ExprResult(false, koopacnt++);
+            }
+            return ExprResult();
+        }
+};
+
+// LAndExp ::= EqExp | LAndExp "&&" EqExp;
+class LAndExpAST : public BaseAST{
+    public:
+        int type;
+        std::unique_ptr<BaseAST> eqexp;
+        std::unique_ptr<BaseAST> landexp;
+        logicop_t logicop;
+
+        void Dump() const override{
+            std::cout << "LAndExpAST { ";
+            if (type == 1) eqexp->Dump();
+            else if (type == 2) {
+                landexp->Dump();
+                std::cout << "logicop";
+                eqexp->Dump();
+            }
+            std::cout << " }";
+        }
+
+        ExprResult KoopaIR() const override{
+            if (type == 1) return eqexp->KoopaIR();
+            else if (type == 2) {
+                ExprResult left = landexp->KoopaIR();
+                ExprResult right = eqexp->KoopaIR();
+                std::cout << "  %" << koopacnt << " = ";
+                
+                if (left.is_constant) std::cout << left.value << " && ";
+                else std::cout << "%" << left.value << " && ";
+                if (right.is_constant) std::cout << right.value << std::endl;
+                else std::cout << "%" << right.value << std::endl;
+
+                return ExprResult(false, koopacnt++);
+            }
+            return ExprResult();
+        }
+};
+
+// EqExp ::= RelExp | EqExp ("==" | "!=") RelExp;
+class EqExpAST : public BaseAST{
+    public:
+        int type;
+        std::unique_ptr<BaseAST> relexp;
+        std::unique_ptr<BaseAST> eqexp;
+        eqop_t eqop;
+
+        void Dump() const override{
+            std::cout << "EqExpAST { ";
+            if (type == 1) relexp->Dump();
+            else if (type == 2) {
+                eqexp->Dump();
+                std::cout << "relop";
+                relexp->Dump();
+            }
+            std::cout << " }";
+        }
+
+        ExprResult KoopaIR() const override{
+            if (type == 1) return relexp->KoopaIR();
+            else if (type == 2){
+                ExprResult left = eqexp->KoopaIR();
+                ExprResult right = relexp->KoopaIR();
+                std::cout << "  %" << koopacnt << " = ";
+                switch (eqop) {
+                    case REL_EQ: std::cout << "eq "; break;
+                    case REL_NE: std::cout << "ne "; break;
+                }
+                if (left.is_constant) std::cout << left.value << ", ";
+                else std::cout << "%" << left.value << ", ";
+                if (right.is_constant) std::cout << right.value << std::endl;
+                else std::cout << "%" << right.value << std::endl;
+
+                return ExprResult(false, koopacnt++);
+            }
+            return ExprResult();
+        }
+};
+
+// RelExp ::= AddExp | RelExp ("<" | ">" | "<=" | ">=") AddExp;
+class RelExpAST : public BaseAST{
+    public:
+        int type;
+        std::unique_ptr<BaseAST> addexp;
+        std::unique_ptr<BaseAST> relexp;
+        relop_t relop;
+
+        void Dump() const override{
+            std::cout << "RelExpAST { ";
+            if (type == 1) addexp->Dump();
+            else if (type == 2){
+                relexp->Dump();
+                std::cout << " relop ";
+                addexp->Dump();
+            }
+            std::cout << " }";
+        }
+        
+        ExprResult KoopaIR() const override{
+            if (type == 1) return addexp->KoopaIR();
+            else if (type == 2) {
+                ExprResult left = relexp->KoopaIR();
+                ExprResult right = addexp->KoopaIR();
+                std::cout << "  %" << koopacnt << " = ";
+                switch(relop){
+                    case REL_LT: std::cout << "lt "; break;
+                    case REL_GT: std::cout << "gt "; break;
+                    case REL_LE: std::cout << "le "; break;
+                    case REL_GE: std::cout << "ge "; break;
+                }
+                if (left.is_constant) std::cout << left.value << ", ";
+                else std::cout << "%" << left.value << ", ";
+                if (right.is_constant) std::cout << right.value << std::endl;
+                else std::cout << "%" << right.value << std::endl;
+                return ExprResult(false, koopacnt++);
+            }
+            return ExprResult();
+        }
+};
+
 
 // AddExp ::= MulExp | AddExp ("+" | "-") MulExp;
 class AddExpAST : public BaseAST{
@@ -396,266 +644,26 @@ class UnaryExpAST : public BaseAST{
         }
 };
 
-
-// RelExp ::= AddExp | RelExp ("<" | ">" | "<=" | ">=") AddExp;
-class RelExpAST : public BaseAST{
+// PrimaryExp ::= "(" Exp ")" | LVal | Number;
+// Number ::= INT_CONST;
+class PrimaryExpAST : public BaseAST{
     public:
         int type;
-        std::unique_ptr<BaseAST> addexp;
-        std::unique_ptr<BaseAST> relexp;
-        relop_t relop;
+        std::int32_t number;
+        std::unique_ptr<BaseAST> exp_lval;
 
         void Dump() const override{
-            std::cout << "RelExpAST { ";
-            if (type == 1) addexp->Dump();
+            std::cout << "PrimaryExpAST { ";
+            if (type == 1) exp_lval->Dump();
+            else if (type == 2) std::cout << "Number: " << number;
+            std::cout << " }";
+        }
+
+        ExprResult KoopaIR() const override{
+            if (type == 1) return exp_lval->KoopaIR();
             else if (type == 2){
-                relexp->Dump();
-                std::cout << " relop ";
-                addexp->Dump();
-            }
-            std::cout << " }";
-        }
-        
-        ExprResult KoopaIR() const override{
-            if (type == 1) return addexp->KoopaIR();
-            else if (type == 2) {
-                ExprResult left = relexp->KoopaIR();
-                ExprResult right = addexp->KoopaIR();
-                std::cout << "  %" << koopacnt << " = ";
-                switch(relop){
-                    case REL_LT: std::cout << "lt "; break;
-                    case REL_GT: std::cout << "gt "; break;
-                    case REL_LE: std::cout << "le "; break;
-                    case REL_GE: std::cout << "ge "; break;
-                }
-                if (left.is_constant) std::cout << left.value << ", ";
-                else std::cout << "%" << left.value << ", ";
-                if (right.is_constant) std::cout << right.value << std::endl;
-                else std::cout << "%" << right.value << std::endl;
-                return ExprResult(false, koopacnt++);
+                return ExprResult(true, number);
             }
             return ExprResult();
-        }
-};
-
-// EqExp ::= RelExp | EqExp ("==" | "!=") RelExp;
-class EqExpAST : public BaseAST{
-    public:
-        int type;
-        std::unique_ptr<BaseAST> relexp;
-        std::unique_ptr<BaseAST> eqexp;
-        eqop_t eqop;
-
-        void Dump() const override{
-            std::cout << "EqExpAST { ";
-            if (type == 1) relexp->Dump();
-            else if (type == 2) {
-                eqexp->Dump();
-                std::cout << "relop";
-                relexp->Dump();
-            }
-            std::cout << " }";
-        }
-
-        ExprResult KoopaIR() const override{
-            if (type == 1) return relexp->KoopaIR();
-            else if (type == 2){
-                ExprResult left = eqexp->KoopaIR();
-                ExprResult right = relexp->KoopaIR();
-                std::cout << "  %" << koopacnt << " = ";
-                switch (eqop) {
-                    case REL_EQ: std::cout << "eq "; break;
-                    case REL_NE: std::cout << "ne "; break;
-                }
-                if (left.is_constant) std::cout << left.value << ", ";
-                else std::cout << "%" << left.value << ", ";
-                if (right.is_constant) std::cout << right.value << std::endl;
-                else std::cout << "%" << right.value << std::endl;
-
-                return ExprResult(false, koopacnt++);
-            }
-            return ExprResult();
-        }
-};
-
-// LAndExp ::= EqExp | LAndExp "&&" EqExp;
-class LAndExpAST : public BaseAST{
-    public:
-        int type;
-        std::unique_ptr<BaseAST> eqexp;
-        std::unique_ptr<BaseAST> landexp;
-        logicop_t logicop;
-
-        void Dump() const override{
-            std::cout << "LAndExpAST { ";
-            if (type == 1) eqexp->Dump();
-            else if (type == 2) {
-                landexp->Dump();
-                std::cout << "logicop";
-                eqexp->Dump();
-            }
-            std::cout << " }";
-        }
-
-        ExprResult KoopaIR() const override{
-            if (type == 1) return eqexp->KoopaIR();
-            else if (type == 2) {
-                ExprResult left = landexp->KoopaIR();
-                ExprResult right = eqexp->KoopaIR();
-                std::cout << "  %" << koopacnt << " = ";
-                
-                if (left.is_constant) std::cout << left.value << " && ";
-                else std::cout << "%" << left.value << " && ";
-                if (right.is_constant) std::cout << right.value << std::endl;
-                else std::cout << "%" << right.value << std::endl;
-
-                return ExprResult(false, koopacnt++);
-            }
-            return ExprResult();
-        }
-};
-
-// LOrExp ::= LAndExp | LOrExp "||" LAndExp;
-class LOrExpAST : public BaseAST{
-    public:
-        int type;
-        std::unique_ptr<BaseAST> lorexp;
-        std::unique_ptr<BaseAST> landexp;
-        logicop_t logicop;
-        
-        void Dump() const override{
-            std::cout << "LOrExpAST { ";
-            if (type == 1) landexp->Dump();
-            else if (type == 2) {
-                lorexp->Dump();
-                std::cout << "logicop";
-                landexp->Dump();
-            }
-            std::cout << " }";
-        }
-
-        ExprResult KoopaIR() const override{
-            if (type == 1) return landexp->KoopaIR();
-            else if (type == 2) {
-                ExprResult left = lorexp->KoopaIR();
-                ExprResult right = landexp->KoopaIR();
-                std::cout << "  %" << koopacnt << " = ";
-                
-                if (left.is_constant) std::cout << left.value << " || ";
-                else std::cout << "%" << left.value << " || ";
-                if (right.is_constant) std::cout << right.value << std::endl;
-                else std::cout << "%" << right.value << std::endl;
-
-                return ExprResult(false, koopacnt++);
-            }
-            return ExprResult();
-        }
-};
-
-// Decl ::= ConstDecl;
-class DeclAST : public BaseAST{
-    public:
-        std::unique_ptr<BaseAST> constdecl;
-
-        void Dump() const override{
-            std::cout << "DeclAST { ";
-            constdecl->Dump();
-            std::cout << " }";
-        }
-
-        ExprResult KoopaIR() const override{
-            return constdecl->KoopaIR();
-        }
-};
-
-// ConstDecl ::= "const" BType ConstDef {"," ConstDef} ";";
-class ConstDeclAST : public BaseAST {
-    public:
-        std::unique_ptr<BaseAST> btype;
-        std::vector<std::unique_ptr<BaseAST>> constdef_list;
-
-        void Dump() const override {
-            std::cout << "ConstDecl { ";
-            btype->Dump();
-            for (const auto& constdef : constdef_list) {
-                constdef->Dump();
-            }
-            std::cout << " }";
-        }
-
-        ExprResult KoopaIR() const override {
-            btype->KoopaIR();
-            for (const auto& constdef : constdef_list) {
-                constdef->KoopaIR();
-            }
-            return ExprResult();
-        }
-};
-
-// BType ::= "int";
-class BTypeAST : public BaseAST{
-    public:
-        void Dump() const override{
-            std::cout << "BTypeAST { int }";
-        }
-
-        ExprResult KoopaIR() const override {
-            return ExprResult();
-        }
-};
-
-// ConstDef ::= IDENT "=" ConstInitVal;
-class ConstDefAST : public BaseAST {
-    public:
-        std::string ident;
-        std::unique_ptr<BaseAST> constintval;
-
-        void Dump() const override {
-            std::cout << "ConstDefAST { ";
-            std::cout << "IDENT = " << ident << ", value = ";
-            constintval->Dump();
-            std::cout << " }";
-        }
-
-        ExprResult KoopaIR() const override {
-            ExprResult intval = constintval->KoopaIR();
-            if (intval.is_constant){
-                int num = intval.value;
-                constMap[ident] = num;
-            }
-            else assert(false);
-            return ExprResult();
-        }
-};
-
-// ConstInitVal ::= ConstExp;
-class ConstInitValAST : public BaseAST {
-    public:
-        std::unique_ptr<BaseAST> constexp;
-
-        void Dump() const override {
-            std::cout << "ConstInitValAST { ";
-            constexp->Dump();
-            std::cout << " }";
-        }
-
-        ExprResult KoopaIR() const override {
-            return constexp->KoopaIR();
-        }
-};
-
-// ConstExp ::= Exp
-class ConstExpAST : public BaseAST {
-    public:
-        std::unique_ptr<BaseAST> exp;
-
-        void Dump() const override{
-            std::cout << "ConstExpAST { ";
-            exp->Dump();
-            std::cout << " }";
-        }
-
-        ExprResult KoopaIR() const override {
-            return exp->KoopaIR();
         }
 };
