@@ -201,11 +201,14 @@ VarDefList
 VarDef
     : IDENT {
         auto vardef = make_unique<VarDefAST>();
+        vardef->type = 1;
         vardef->ident = *unique_ptr<string>($1);
         vardef.release();
+        $$ = vardef.release();
     }
     | IDENT '=' InitVal {
         auto vardef = make_unique<VarDefAST>();
+        vardef->type = 2;
         vardef->ident = *unique_ptr<string>($1);
         vardef->initval = unique_ptr<BaseAST>($3);
         $$ = vardef.release();

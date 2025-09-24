@@ -329,8 +329,7 @@ class InitValAST : public BaseAST {
         }
 
         ExprResult KoopaIR() const override {
-            exp->KoopaIR();
-            return ExprResult();
+            return exp->KoopaIR();
         }
 };
 
