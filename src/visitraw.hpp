@@ -2,22 +2,23 @@
 #include<cassert>
 #include<iostream>
 #include "koopa.h"
-#include<map>
+#include<unordered_map>
 #include<string>
 
-std::map<koopa_raw_value_t, std::string> regs;
-int reg_count = 0;
-std::string new_reg() {
-    return "t" + std::to_string(reg_count++);
-}
+static int stack_frame_length = 0;
+static int stack_frame_used = 0;
+
+static std::unordered_map<koopa_raw_value_t, std::string> loc;
 
 void Visit(const koopa_raw_slice_t &slice);   
 void Visit(const koopa_raw_function_t &func);      
 void Visit(const koopa_raw_basic_block_t &bb);     
 void Visit(const koopa_raw_value_t &value);        
-void Visit(const koopa_raw_return_t &value);       
+void Visit(const koopa_raw_return_t &ret);       
 void Visit(const koopa_raw_value_t &value, const koopa_raw_binary_t &binary);
-void Visit(const koopa_raw_integer_t &value);    
+void Visit(const koopa_raw_integer_t &integer);    
+void Visit(const koopa_raw_load_t &load, const koopa_raw_value_t &value);
+void Visit(const koopa_raw_store_t &store);
 
 void Visit(const koopa_raw_program_t &program){
     Visit(program.values);
@@ -48,8 +49,26 @@ void Visit(const koopa_raw_function_t &func){
     std::cout << " .global " << func->name+1 << std::endl;
     std::cout << func->name+1 << ":" << std::endl;
 
-    reg_count = 0;
-    regs.clear();
+    stack_frame_length = 0;
+    stack_frame_used = 0;
+
+    int var_cnt = 0;
+    for (size_t i = 0; i < func->bbs.len; ++i) {
+        const auto& insts = reinterpret_cast<koopa_raw_basic_block_t>(func->bbs.buffer[i])->insts;
+        var_cnt += insts.len;
+        for (size_t j = 0; j < insts.len; ++j) {
+            auto inst = reinterpret_cast<koopa_raw_value_t>(insts.buffer[j]);
+            if (inst->ty->tag == KOOPA_RTT_UNIT) var_cnt--;
+        }
+    }
+
+    stack_frame_length = var_cnt << 2;
+    stack_frame_length = (stack_frame_length + 16 -1) & (~(16-1));
+
+    if (stack_frame_length != 0) {
+        std::cout << "  addi sp, sp, -" << stack_frame_length << std::endl;
+    }
+
     Visit(func->bbs);
 }
 
@@ -59,10 +78,6 @@ void Visit(const koopa_raw_basic_block_t &bb){
 }
 
 void Visit(const koopa_raw_value_t &value){
-    if (regs.count(value)) {
-        return;
-    }
-
     const auto &kind = value->kind;
     switch(kind.tag) {
         case KOOPA_RVT_RETURN:
@@ -74,112 +89,118 @@ void Visit(const koopa_raw_value_t &value){
         case KOOPA_RVT_BINARY:
             Visit(value, kind.data.binary);
             break;
+        case KOOPA_RVT_ALLOC:
+            loc[value] = std::to_string(stack_frame_used) + "(sp)";
+            stack_frame_used += 4;
+            break;
+        case KOOPA_RVT_LOAD:
+            Visit(kind.data.load, value);
+            break;
+        case KOOPA_RVT_STORE:
+            Visit(kind.data.store);
+            break;
+        
         default:
             assert(false);
     }
 }
 
-void Visit(const koopa_raw_return_t &value){
-    koopa_raw_value_t ret_val = value.value;
-    if (ret_val->kind.tag == KOOPA_RVT_INTEGER) {
-        std::cout << "  li a0, " << ret_val->kind.data.integer.value << std::endl;
-    } else {
-        Visit(ret_val);
-        std::cout << "  mv a0, " << regs.at(ret_val) << std::endl;
+static void load2reg(const koopa_raw_value_t &value, const std::string &reg) {
+    if (value->kind.tag == KOOPA_RVT_INTEGER) {
+        std::cout << "  li " << reg << ", " << value->kind.data.integer.value << std::endl;
     }
+    else {
+        std::cout << "  lw " << reg << ", " << loc[value] <<  std::endl;
+    }
+}
 
+void Visit(const koopa_raw_return_t &ret){
+    load2reg(ret.value, "a0");
+    if (stack_frame_length != 0) {
+        std::cout << "  addi sp, sp, " << stack_frame_length << std::endl;
+    }
     std::cout << "  ret" << std::endl;
 }
 
-void Visit(const koopa_raw_integer_t &value){
-
+void Visit(const koopa_raw_integer_t &integer){
+    std::cout << "  li a0, " << integer.value << std::endl;
 }
 
 void Visit(const koopa_raw_value_t &value, const koopa_raw_binary_t &binary) {
-    koopa_raw_value_t lhs_val = binary.lhs;
-    koopa_raw_value_t rhs_val = binary.rhs;
-
-    std::string lhs_reg;
-    if (lhs_val->kind.tag == KOOPA_RVT_INTEGER) {
-        int32_t lhs_value = lhs_val->kind.data.integer.value;
-        if (lhs_value == 0) lhs_reg = "x0";
-        else {
-            lhs_reg = new_reg();
-            std::cout << "  li " << lhs_reg << ", " << lhs_value << std::endl;
-        }
-    }
-    else {
-        Visit(lhs_val);
-        lhs_reg = regs.at(lhs_val);
-    }
-
-    std::string rhs_reg;
-    if (rhs_val->kind.tag == KOOPA_RVT_INTEGER) {
-        int32_t rhs_value = rhs_val->kind.data.integer.value;
-        if (rhs_value == 0) rhs_reg = "x0";
-        else {
-            rhs_reg = new_reg();
-            std::cout << "  li " << rhs_reg << ", " << rhs_value <<std::endl;
-        }
-    }
-    else {
-        Visit(rhs_val);
-        rhs_reg = regs.at(rhs_val);
-    }
-
-    std::string result_reg = new_reg();
-    regs[value] = result_reg;
+    load2reg(binary.lhs, "t0");
+    load2reg(binary.rhs, "t1");
 
     switch (binary.op) {
+        case KOOPA_RBO_NOT_EQ:
+            std::cout << "  xor t0, t0, t1" << std::endl;
+            std::cout << "  snez t0, t0" << std::endl;
+            break;
+        case KOOPA_RBO_EQ:
+            std::cout << "  xor t0, t0, t1" << std::endl;
+            std::cout << "  seqz t0, t0" << std::endl;
+            break;
+        case KOOPA_RBO_GT:
+            std::cout << "  sgt t0, t0, t1" << std::endl;
+            break;
+        case KOOPA_RBO_LT:
+            std::cout << "  slt t0, t0, t1" << std::endl;
+            break;
+        case KOOPA_RBO_GE:
+            std::cout << "  slt t0, t0, t1" << std::endl;
+            std::cout << "  xori t0, t0, 1" << std::endl;
+            break;
+        case KOOPA_RBO_LE:
+            std::cout << "  sgt t0, t0, t1" << std::endl;
+            std::cout << "  xori t0, t0, 1" << std::endl;
+            break;
         case KOOPA_RBO_ADD:
-            std::cout << "  add " << result_reg << ", " << lhs_reg << ", " << rhs_reg << std::endl;
+            std::cout << "  add t0, t0, t1" << std::endl;
             break;
         case KOOPA_RBO_SUB:
-            std::cout << "  sub " << result_reg << ", " << lhs_reg << ", " << rhs_reg << std::endl;
+            std::cout << "  sub t0, t0, t1" << std::endl;
             break;
         case KOOPA_RBO_MUL:
-            std::cout << "  mul " << result_reg << ", " << lhs_reg << ", " << rhs_reg << std::endl;
+            std::cout << "  mul t0, t0, t1" << std::endl;
             break;
         case KOOPA_RBO_DIV:
-            std::cout << "  div " << result_reg << ", " << lhs_reg << ", " << rhs_reg << std::endl;
+            std::cout << "  div t0, t0, t1" << std::endl;
             break;
         case KOOPA_RBO_MOD:
-            std::cout << "  rem " << result_reg << ", " << lhs_reg << ", " << rhs_reg << std::endl;
-            break;
-        case KOOPA_RBO_EQ:   // 相等比较
-            std::cout << "  xor " << result_reg << ", " << lhs_reg << ", " << rhs_reg << std::endl;
-            std::cout << "  seqz " << result_reg << ", " << result_reg << std::endl;
-            break;
-        case KOOPA_RBO_NOT_EQ:  // 不等比较
-            std::cout << "  xor " << result_reg << ", " << lhs_reg << ", " << rhs_reg << std::endl;
-            std::cout << "  snez " << result_reg << ", " << result_reg << std::endl;
-            break;
-        case KOOPA_RBO_LT:   // 小于
-            std::cout << "  slt " << result_reg << ", " << lhs_reg << ", " << rhs_reg << std::endl;
-            break;
-        case KOOPA_RBO_LE:   // 小于等于
-            // a <= b 等价于 !(a > b) 等价于 !(b < a)
-            std::cout << "  slt " << result_reg << ", " << rhs_reg << ", " << lhs_reg << std::endl;
-            std::cout << "  seqz " << result_reg << ", " << result_reg << std::endl;
-            break;
-        case KOOPA_RBO_GT:   // 大于
-            std::cout << "  slt " << result_reg << ", " << rhs_reg << ", " << lhs_reg << std::endl;
-            break;
-        case KOOPA_RBO_GE:   // 大于等于
-            // a >= b 等价于 !(a < b)
-            std::cout << "  slt " << result_reg << ", " << lhs_reg << ", " << rhs_reg << std::endl;
-            std::cout << "  seqz " << result_reg << ", " << result_reg << std::endl;
-            break;
-        case KOOPA_RBO_OR:
-            std::cout << "  or t0, " << lhs_reg << ", " << rhs_reg << std::endl;
-            std::cout << "  snez " << result_reg << ", t0" << std::endl;
+            std::cout << "  rem t0, t0, t1" << std::endl;
             break;
         case KOOPA_RBO_AND:
-            std::cout << "  snez t0, " << lhs_reg << std::endl;
-            std::cout << "  snez t1, " << rhs_reg << std::endl;
-            std::cout << "  and " << result_reg << ", t0, t1" << std::endl;
+            std::cout << "  and t0, t0, t1" << std::endl;
             break;
-        default:
-            assert(false);
+        case KOOPA_RBO_OR:
+            std::cout << "  or t0, t0, t1" << std::endl;
+            break;
+        case KOOPA_RBO_XOR:
+            std::cout << "  xor t0, t0, t1" << std::endl;
+            break;
+        case KOOPA_RBO_SHL:
+            std::cout << "  sll t0, t0, t1" << std::endl;
+            break;
+        case KOOPA_RBO_SHR:
+            std::cout << "  srl t0, t0, t1" << std::endl;
+            break;
+        case KOOPA_RBO_SAR:
+            std::cout << "  sra t0, t0, t1" << std::endl;
+            break;
     }
+
+    loc[value] = std::to_string(stack_frame_used) + "(sp)";
+    stack_frame_used += 4;
+    std::cout << "  sw t0, " << loc[value] << std::endl;
+}
+
+void Visit(const koopa_raw_load_t &load, const koopa_raw_value_t &value){
+    load2reg(load.src, "t0");
+    loc[value] = std::to_string(stack_frame_used) + "(sp)";
+    stack_frame_used += 4;
+    std::cout << "  sw t0, " << loc[value] << std::endl;
+}
+
+void Visit(const koopa_raw_store_t &store) {
+    load2reg(store.value, "t0");
+    std::cout << "  sw t0, " << loc[store.dest] << std::endl;
 }
